@@ -10,6 +10,8 @@ def main_train():
         url=os.getenv("SNOWFLAKE_URL"),
         uid=os.getenv("SNOWFLAKE_UID"),
         pwd=os.getenv("SNOWFLAKE_PASSWORD"),
+        database=os.getenv("SNOWFLAKE_DATABASE"),
+        schema=os.getenv("SNOWFLAKE_SCHEMA"),
     )
     dao.connect()
 

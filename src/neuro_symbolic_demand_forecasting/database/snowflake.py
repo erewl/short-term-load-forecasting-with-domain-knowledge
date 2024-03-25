@@ -7,11 +7,13 @@ from snowflake.sqlalchemy import URL
 class SnowflakeDao:
     engine: Engine = None
 
-    def __init__(self, url: str, uid: str, pwd: str, role: str = "DATA_ENGINEER",
+    def __init__(self, url: str, uid: str, pwd: str, database: str, schema: str, role: str = "DATA_ENGINEER",
                  warehouse: str = "USER_WH"):
         self.url = url
         self.uid = uid
         self.pwd = pwd
+        self.database = database
+        self.schema = schema
         self.role = role
         self.warehouse = warehouse
 
@@ -20,7 +22,8 @@ class SnowflakeDao:
             account=self.url,
             user=self.uid,
             password=self.pwd,
-            schema='KATRIN',
+            database=self.database,
+            schema=self.schema,
             warehouse=self.warehouse,
             role=self.role,
             numpy=True,
