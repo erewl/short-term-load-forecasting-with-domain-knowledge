@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "neuro-symbolic-demand-forecasting"
+version = "0.1.0"
+description = ""
+authors = ["Katrin Grunert grunert.katrin@protonmail.com>"]
+readme = "README.md"
+packages = [{include = "neuro_symbolic_demand_forecasting", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pandas = "^2.2.1"
+numpy = "^1.26.4"
+snowflake-sqlalchemy = "^1.5.1"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.3.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
