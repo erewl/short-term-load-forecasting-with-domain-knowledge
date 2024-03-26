@@ -29,6 +29,8 @@ class SnowflakeDao:
             numpy=True,
         ))
 
+        print("Connected to snowflake instance!")
+
     def fetch_list(self, query: str) -> pd.DataFrame:
         with self.engine.connect() as conn:
             result = conn.execute(query)
