@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 import datetime as dt
 
-from src.neuro_symbolic_demand_forecasting.database.postgres import PostgresDao
+from src.neuro_symbolic_demand_forecasting.database.weather_postgres import WeatherDao
 from src.neuro_symbolic_demand_forecasting.database.snowflake import SnowflakeDao
 
 
@@ -16,7 +16,7 @@ def main_train():
         schema=os.getenv("SNOWFLAKE_SCHEMA"),
     )
     sf_dao.connect()
-    pg_dao = PostgresDao(
+    pg_dao = WeatherDao(
         url=os.getenv("POSTGRES_HOST_WEATHER_DATA"),
         uid=os.getenv("POSTGRES_UID_WEATHER_DATA"),
         pwd=os.getenv("POSTGRES_PASSWORD_WEATHER_DATA"),

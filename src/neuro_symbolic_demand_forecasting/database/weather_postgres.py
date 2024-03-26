@@ -7,7 +7,7 @@ from sqlalchemy.engine import Engine
 from src.neuro_symbolic_demand_forecasting.helpers.weather_utils import GridPoints, get_gridpoint
 
 
-class PostgresDao:
+class WeatherDao:
     engine: Engine = None
 
     features = [
