@@ -15,7 +15,6 @@ def main_train():
         database=os.getenv("SNOWFLAKE_DATABASE"),
         schema=os.getenv("SNOWFLAKE_SCHEMA"),
     )
-    sf_dao.connect()
     pg_dao = WeatherDao(
         url=os.getenv("POSTGRES_HOST_WEATHER_DATA"),
         uid=os.getenv("POSTGRES_UID_WEATHER_DATA"),
@@ -24,7 +23,8 @@ def main_train():
         schema=os.getenv("POSTGRES_SCHEMA_WEATHER_DATA"),
         port=int(os.getenv("POSTGRES_PORT_WEATHER_DATA"))
     )
-    pg_dao.connect()
+    # sf_dao.connect()
+    # pg_dao.connect()
 
     # df = pg_dao.fetch_weather_forecast(52.1, 5.18,
     #                                    to_ams_local_tz(dt.datetime(2024, 3, 12, 0, 0)),
@@ -34,3 +34,4 @@ def main_train():
 
 if __name__ == "__main__":
     main_train()
+

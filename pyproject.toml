@@ -7,17 +7,22 @@ readme = "README.md"
 packages = [{include = "neuro_symbolic_demand_forecasting", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.9"
 pandas = "^2.2.1"
 numpy = "^1.26.4"
 snowflake-sqlalchemy = "^1.5.1"
 python-dotenv = "^1.0.1"
 snowflake-connector-python = "^3.7.1"
 psycopg2 = "^2.9.9"
+matplotlib = "^3.8.3"
+tensorflow = "^2.16.1"
+ltn = "2.0"
+statsmodels = "^0.14.1"
 
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.3.0"
+ipykernel = "^6.29.3"
 
 [build-system]
 requires = ["poetry-core"]
