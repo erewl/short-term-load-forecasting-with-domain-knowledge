@@ -12,12 +12,14 @@ pandas = "^2.2.1"
 numpy = "^1.26.4"
 snowflake-sqlalchemy = "^1.5.1"
 python-dotenv = "^1.0.1"
-snowflake-connector-python = "^3.7.1"
+snowflake-connector-python = {extras = ["pandas"], version = "^3.7.1"}
 psycopg2 = "^2.9.9"
 matplotlib = "^3.8.3"
 tensorflow = "^2.16.1"
 ltn = "2.0"
 statsmodels = "^0.14.1"
+polars = "^0.20.16"
+seaborn = "^0.13.2"
 
 
 [tool.poetry.group.dev.dependencies]
