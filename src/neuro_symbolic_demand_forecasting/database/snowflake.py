@@ -1,4 +1,5 @@
 import pandas as pd
+import polars as pl
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from snowflake.sqlalchemy import URL
@@ -31,11 +32,15 @@ class SnowflakeDao:
 
         print("Connected to snowflake instance!")
 
-    def fetch_list(self, query: str) -> pd.DataFrame:
+    def fetch_list(self, query: str) -> pl.DataFrame:
         with self.engine.connect() as conn:
+            print("Executing query")
             result = conn.execute(query)
-            df = pd.DataFrame(result.fetchall())
+            fetched_result= result.fetchall()
+            print("Writing data to df")
+            df = pd.DataFrame(fetched_result)
             df.columns = result.keys()
+            df = pl.from_pandas(df)
             return df
 
     def fetch_one(self, query: str) -> pd.DataFrame:
