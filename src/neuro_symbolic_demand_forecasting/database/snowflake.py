@@ -36,7 +36,8 @@ class SnowflakeDao:
         with self.engine.connect() as conn:
             print("Executing query")
             result = conn.execute(query)
-            fetched_result= result.fetchall()
+            print("Fetching all")
+            fetched_result= result.all()
             print("Writing data to df")
             df = pd.DataFrame(fetched_result)
             df.columns = result.keys()
