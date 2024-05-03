@@ -1,9 +1,8 @@
 import numpy as np
 from keras.preprocessing import timeseries_dataset_from_array
 import tensorflow as tf
-import polars as pl
 
-
+# this is old for non-darts timeseries and dataprocessing
 def create_dataset_from_df(df, source_window_size: int, rolling_window_in_ptus: int = 96) -> tf.data.Dataset:
     return timeseries_dataset_from_array(
         data=df,
