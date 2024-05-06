@@ -10,10 +10,10 @@ packages = [{include = "neuro_symbolic_demand_forecasting", from = "src"}]
 python = "^3.11"
 pandas = "^2.2.1"
 numpy = "^1.26.4"
-snowflake-sqlalchemy = "^1.5.1"
+# snowflake-sqlalchemy = "^1.5.1"
 python-dotenv = "^1.0.1"
-snowflake-connector-python = {extras = ["pandas"], version = "^3.7.1"}
-psycopg2 = "^2.9.5"
+# snowflake-connector-python = {extras = ["pandas"], version = "^3.7.1"}
+# psycopg2 = "^2.9.5"
 matplotlib = "^3.8.3"
 tensorflow = "^2.16.1"
 ltn = "2.0"
