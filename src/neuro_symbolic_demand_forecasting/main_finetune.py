@@ -6,6 +6,7 @@ def main_train():
 
     # load data, smart meter, weather, actuals
     # transform to darts.Timeseries
+    # load hyperparameter configs for optimization
     # load loss function
     # initiate model
     # train
