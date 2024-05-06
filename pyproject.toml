@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "neuro_symbolic_demand_forecasting", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.11"
 pandas = "^2.2.1"
 numpy = "^1.26.4"
 snowflake-sqlalchemy = "^1.5.1"
