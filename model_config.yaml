@@ -1,5 +1,8 @@
 model_class: 'TFT'
 
+weather_forecast_features: ['wind_speed_10m', 'grad_accum_ground_0m', 'pres_instant_ground_0m', 't_instant_ground_2m']
+weather_actuals_features: ['wind_speed', 'global_radiation', 'air_pressure', 'air_temperature']
+
 tft_config:
   input_chunk_length: 24
   output_chunk_length: 12
@@ -14,5 +17,5 @@ tft_config:
     # lr: 1e-3
   random_state: 42
   save_checkpoints: true
-  torch_kwargs:  # custom loss
-    loss_fn: "CustomLoss" # MSE
+  torch_kwargs:  # injecting custom loss
+    loss_fn: "CustomLoss" # else MSE or similar metrics

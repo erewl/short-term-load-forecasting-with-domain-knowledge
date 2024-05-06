@@ -13,4 +13,3 @@ class CustomLoss(nn.Module):
         # print('target', target)
         loss = torch.mean((output - target)**2)  # Example custom loss (MSE)
         return loss
-    
