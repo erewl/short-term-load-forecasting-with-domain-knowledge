@@ -109,8 +109,8 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(description='Train the model with smart meter data')
+    parser.add_argument('-l', '--log_file', type=str, default=None, help='Path to the log file.')
     parser.add_argument('-smd', '--smart-meter-data', metavar='SMD_FILES', type=str, nargs='+',
                         help='comma-separated list of smart meter data csv files to be used for training')
     parser.add_argument('-wfd', '--weather-forecast-data', metavar='WFD_FILES', type=str, nargs='+',
@@ -120,6 +120,11 @@ if __name__ == "__main__":
     parser.add_argument('-md', '--model-configuration', metavar='MODEL_CONFIG_PATH', type=str,
                         help='path to the model configuration YAML file')
     args = parser.parse_args()
+
+    if args.log_file:
+        logging.basicConfig(level=logging.INFO, filename=args.log_file)
+    else:
+        logging.basicConfig(level=logging.INFO)
 
     smd_files, wfd_files, wad_files = [], [], []
     if args.smart_meter_data:
