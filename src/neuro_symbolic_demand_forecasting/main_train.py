@@ -1,6 +1,7 @@
 import argparse
 import datetime as dt
 import logging
+from typing import Tuple
 
 import pandas as pd
 import yaml
@@ -15,8 +16,9 @@ from sklearn.preprocessing import MinMaxScaler
 
 
 def _load_csvs(_config: dict, _smart_meter_files: list[str], _weather_forecast_files: list[str],
-               _weather_actuals_files: list[str]):
-    sm = pd.read_csv(_smart_meter_files[0], index_col=None, parse_dates=['readingdate']).set_index('readingdate')
+               _weather_actuals_files: list[str]) -> Tuple[list[pd.DataFrame], pd.DataFrame, pd.DataFrame]:
+    sms = [pd.read_csv(s, index_col=None, parse_dates=['readingdate']).set_index('readingdate') for s in
+           _smart_meter_files]
 
     wf = pd.read_csv(_weather_forecast_files[0], index_col=None, parse_dates=['valid_datetime']).set_index(
         'valid_datetime')
@@ -28,12 +30,13 @@ def _load_csvs(_config: dict, _smart_meter_files: list[str], _weather_forecast_f
     wa = wa[_config['weather_actuals_features']]
     wa = wa.resample('15min').mean()
 
-    return sm, wf, wa
+    return sms, wf, wa
 
 
 def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSeries:
     min_smart_meter = sm_ts.time_index.min()
     overall_min_date = max(min_smart_meter, min_weather, min_actuals)
+    logging.info(f'Adjusting start dates of smart meter timeseries from {min_smart_meter} to {overall_min_date}')
     # set index to the latest start (min) date
     return sm_ts[sm_ts.get_index_at_point(overall_min_date):]
 
@@ -77,26 +80,30 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
 
     weather_forecast_ts = weather_forecast_scaler.fit_transform(TimeSeries.from_dataframe(wf))
     weather_actuals_ts = weather_actuals_scaler.fit_transform(TimeSeries.from_dataframe(wa))
-    smart_meter_ts = smart_meter_scaler.fit_transform(TimeSeries.from_dataframe(sm))
-    smart_meter_ts = _adjust_start_date(smart_meter_ts, weather_forecast_ts.time_index.min(),
-                                        weather_actuals_ts.time_index.min())
+    smart_meter_tss = [smart_meter_scaler.fit_transform(TimeSeries.from_dataframe(s)) for s in sm]
+
+    # creating a series of the same length as smart_meter_ts
+    weather_forecast_tss = [weather_forecast_ts for _ in sm]
+    weather_actuals_tss = [weather_actuals_ts for _ in sm]
+    smart_meter_tss = [_adjust_start_date(s, weather_forecast_ts.time_index.min(),
+                                          weather_actuals_ts.time_index.min()) for s in smart_meter_tss]
 
     # training
     model = _init_model(model_config)
-    train_meter, val_meter = smart_meter_ts.split_after(0.8)
+    # train_meter, val_meter = smart_meter_ts.split_after(0.8)
     model.fit(
-        train_meter,
-        past_covariates=weather_actuals_ts,
-        future_covariates=weather_forecast_ts,
-        val_series=val_meter,
-        val_past_covariates=weather_actuals_ts,
-        val_future_covariates=weather_forecast_ts,
+        smart_meter_tss,
+        past_covariates=weather_actuals_tss,
+        future_covariates=weather_forecast_tss,
+        # val_series=val_meter,
+        # val_past_covariates=weather_actuals_ts,
+        # val_future_covariates=weather_forecast_ts,
         verbose=True,
         # trainer=pl_trainer_kwargs # would be nice to have early stopping here
     )
     # validate
 
-    forecast, actual = val_meter[:-96], val_meter[-96:]
+    forecast, actual = smart_meter_tss[0][:-96], smart_meter_tss[0][-96:]
     # # train_meter.plot()
     # val_meter.plot()
     #
@@ -124,6 +131,7 @@ if __name__ == "__main__":
     if args.log_file:
         logging.basicConfig(level=logging.INFO, filename=args.log_file)
     else:
+        print("No log file specified, writing to stdout")
         logging.basicConfig(level=logging.INFO)
 
     smd_files, wfd_files, wad_files = [], [], []
