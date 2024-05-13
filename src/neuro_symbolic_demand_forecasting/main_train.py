@@ -1,15 +1,14 @@
 import argparse
-import datetime as dt
 import logging
 from typing import Tuple
 
 import pandas as pd
 import yaml
 from darts import TimeSeries
-from darts.models import TFTModel
+from darts.models import RNNModel
 from darts.dataprocessing.transformers import Scaler
 from darts.metrics import mape, smape, mae
-
+from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
 
 from sklearn.preprocessing import MinMaxScaler
@@ -44,7 +43,8 @@ def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSerie
 def _build_torch_kwargs(kwargs: dict) -> dict:
     if kwargs['loss_fn'] and kwargs['loss_fn'] == 'CustomLoss':
         logging.info('Loading in custom loss function')
-        kwargs['loss_fn'] = CustomLoss()
+        # init of custom loss
+        kwargs['loss_fn'] = CustomLoss([0.1])
     return kwargs
 
 
@@ -53,12 +53,21 @@ def _init_model(model_config: dict):
         case "TFT":
             tft_config: dict = model_config['tft_config']
             logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {tft_config}")
-            return TFTModel(
+            return ExtendedTFTModel(
                 input_chunk_length=tft_config['input_chunk_length'],
                 output_chunk_length=tft_config['output_chunk_length'],
+                loss_fn=CustomLoss([0.1]),  # custom loss here
                 **{k: v for k, v in tft_config.items() if
-                   k not in ['input_chunk_length', 'output_chunk_length', 'torch_kwargs']},
-                **_build_torch_kwargs(tft_config['torch_kwargs'])
+                   k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn']}
+            )
+        case "LSTM":
+            lstm_config: dict = model_config['lstm_config']
+            logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {lstm_config}")
+            return RNNModel(
+                model="LSTM",
+                loss_fn=CustomLoss([0.1]),  # custom loss here
+                **{k: v for k, v in lstm_config.items() if
+                   k not in ['loss_fn']}
             )
 
 
@@ -76,43 +85,70 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     # scaling
     weather_forecast_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
     weather_actuals_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
-    smart_meter_scaler = Scaler(MinMaxScaler(feature_range=(-1, 1)))
-
+    smart_meter_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
+    
     weather_forecast_ts = weather_forecast_scaler.fit_transform(TimeSeries.from_dataframe(wf))
     weather_actuals_ts = weather_actuals_scaler.fit_transform(TimeSeries.from_dataframe(wa))
-    smart_meter_tss = [smart_meter_scaler.fit_transform(TimeSeries.from_dataframe(s)) for s in sm]
+    smart_meter_tss = smart_meter_scaler.fit_transform([TimeSeries.from_dataframe(s) for s in sm])
+
+    logging.info("Dtypes of SM, WF, WA")
+    logging.info(smart_meter_tss[0].values().dtype)
+    logging.info(weather_forecast_ts.values().dtype)
+    logging.info(weather_actuals_ts.values().dtype)
+
 
     # creating a series of the same length as smart_meter_ts
     weather_forecast_tss = [weather_forecast_ts for _ in sm]
     weather_actuals_tss = [weather_actuals_ts for _ in sm]
     smart_meter_tss = [_adjust_start_date(s, weather_forecast_ts.time_index.min(),
                                           weather_actuals_ts.time_index.min()) for s in smart_meter_tss]
+    # smart_meter_tss = [s.add_datetime_attribute('weekday', one_hot=True) for s in smart_meter_tss]
 
     # training
     model = _init_model(model_config)
+    logging.info("Initialized model, beginning with fitting...")
+    logging.info(vars(model))
     # train_meter, val_meter = smart_meter_ts.split_after(0.8)
-    model.fit(
-        smart_meter_tss,
-        past_covariates=weather_actuals_tss,
-        future_covariates=weather_forecast_tss,
-        # val_series=val_meter,
-        # val_past_covariates=weather_actuals_ts,
-        # val_future_covariates=weather_forecast_ts,
-        verbose=True,
-        # trainer=pl_trainer_kwargs # would be nice to have early stopping here
-    )
-    # validate
 
+    match model_config['model_class']:
+        case 'LSTM':
+            model.fit(
+                smart_meter_tss,
+                future_covariates=weather_forecast_tss,
+                # val_series=val_meter,
+                # val_past_covariates=weather_actuals_ts,
+                # val_future_covariates=weather_forecast_ts,
+                verbose=True,
+                # trainer=pl_trainer_kwargs # would be nice to have early stopping here
+            )
+        case 'TFT':
+            model.fit(
+                smart_meter_tss,
+                past_covariates=weather_actuals_tss,
+                future_covariates=weather_forecast_tss,
+                # val_series=val_meter,
+                # val_past_covariates=weather_actuals_ts,
+                # val_future_covariates=weather_forecast_ts,
+                verbose=True,
+                # trainer=pl_trainer_kwargs # would be nice to have early stopping here
+            )
+        case other:
+            raise Exception(f'Training for {other} not implemented yet')
+
+
+    # validate
     forecast, actual = smart_meter_tss[0][:-96], smart_meter_tss[0][-96:]
     # # train_meter.plot()
     # val_meter.plot()
     #
-    pred = model.predict(n=96, series=forecast, past_covariates=weather_actuals_ts,
+    pred = model.predict(n=96, series=forecast,
                          future_covariates=weather_forecast_ts)
 
     logging.info("MAPE = {:.2f}%".format(mape(actual, pred)))
     logging.info("SMAPE = {:.2f}%".format(smape(actual, pred)))
     logging.info("MAE = {:.2f}%".format(mae(actual, pred)))
+
+    model.save('./2024-05-08_tftmodel.pkl')
 
 
 if __name__ == "__main__":
@@ -132,7 +168,7 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.INFO, filename=args.log_file)
     else:
         print("No log file specified, writing to stdout")
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.DEBUG)
 
     smd_files, wfd_files, wad_files = [], [], []
     if args.smart_meter_data:
