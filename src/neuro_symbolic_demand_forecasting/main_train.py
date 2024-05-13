@@ -112,8 +112,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     model = _init_model(model_config)
     logging.info("Initialized model, beginning with fitting...")
     logging.info(vars(model))
-    train_tss, val_tss = zip(*[sm.split_after(0.8) for sm in smart_meter_tss])
-
+    train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in smart_meter_tss])
     match model_config['model_class']:
         case 'LSTM':
             model.fit(
