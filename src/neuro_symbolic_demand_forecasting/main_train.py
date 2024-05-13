@@ -86,7 +86,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     weather_forecast_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
     weather_actuals_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
     smart_meter_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
-    
+
     weather_forecast_ts = weather_forecast_scaler.fit_transform(TimeSeries.from_dataframe(wf))
     weather_actuals_ts = weather_actuals_scaler.fit_transform(TimeSeries.from_dataframe(wa))
     smart_meter_tss = smart_meter_scaler.fit_transform([TimeSeries.from_dataframe(s) for s in sm])

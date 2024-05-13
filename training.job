@@ -4,13 +4,19 @@
 #SBATCH -t 00:05:00
 #SBATCH -p thin
 #SBATCH -N 1
+#SBATCH --mem=60G
+#SBATCH --constraint=scratch-node
+
 #SBATCH --mail-type=BEGIN,END
 #SBATCH --mail-user=katrin.grunert@student.uva.nl
+
 module load 2023
 module load Python/3.11.3-GCCcore-12.3.0
+
 cd $HOME/neuro-symbolic-demand-forecasting
 poetry install
 poetry shell
+
 #Copy input file to scratch
 cp $HOME/2023_06_cleaned_data.csv "$TMPDIR"
 cp $HOME/2023-06-amsterdam-actuals.csv "$TMPDIR"
@@ -19,3 +25,5 @@ cp $HOME/model_config.yaml "$TMPDIR"
 
 srun python -m src.neuro_symbolic_demand_forecasting.main_train -smd "$TMPDIR"/2023_06_cleaned_data.csv  -wad "$TMPDIR"/2023-06-amsterdam-actuals.csv -wfd "$TMPDIR"/2023_weather_data_06_run_summer.csv -md "$TMPDIR"/model_config.yaml
 
+# cp # move model to $HOME/models/ directory
+# run with sbatch training.job

@@ -11,9 +11,6 @@ class CustomPLModule(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx) -> torch.Tensor:
         output = self._produce_train_output(train_batch[:-1])
-        target = train_batch[
-            -1
-        ]  # By convention target is always the last element returned by datasets
         loss = self._compute_loss(output, train_batch)
         self.log(
             "train_loss",
@@ -22,7 +19,8 @@ class CustomPLModule(pl.LightningModule):
             prog_bar=True,
             sync_dist=True,
         )
-        self._calculate_metrics(output, target, self.train_metrics)
+        # By convention target is always the last element returned by datasets
+        self._calculate_metrics(output, train_batch[-1], self.train_metrics)
         return loss
 
 
@@ -33,8 +31,6 @@ class CustomLoss(nn.Module):
 
     def forward(self, output, target):
         real_target = target[-1]  # last element is the target element
-        # print('outputted', output)
-        # print('target', target)
         loss = torch.mean((output - real_target) ** 2)  # Example custom loss (MSE)
         # loss = torch.sum((output - 500) ** 2)
         # loss = torch.sum(output**2)
