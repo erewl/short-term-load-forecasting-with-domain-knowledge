@@ -5,7 +5,7 @@ from typing import Tuple
 import pandas as pd
 import yaml
 from darts import TimeSeries
-from darts.models import RNNModel
+from darts.models import RNNModel, TFTModel
 from darts.dataprocessing.transformers import Scaler
 from darts.metrics import mape, smape, mae
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
@@ -50,10 +50,24 @@ def _build_torch_kwargs(kwargs: dict) -> dict:
 
 def _init_model(model_config: dict):
     match model_config['model_class']:
-        case "TFT":
+        case "CustomTFT":
             tft_config: dict = model_config['tft_config']
             logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {tft_config}")
             return ExtendedTFTModel(
+                input_chunk_length=tft_config['input_chunk_length'],
+                output_chunk_length=tft_config['output_chunk_length'],
+                # loss_fn=CustomLoss([0.1]),  # custom loss here
+                # pl_trainer_kwargs={
+                #     "accelerator": "gpu",
+                #     "devices": [0]
+                # },
+                **{k: v for k, v in tft_config.items() if
+                   k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn']}
+            )
+        case "TFT":
+            tft_config: dict = model_config['tft_config']
+            logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {tft_config}")
+            return TFTModel(
                 input_chunk_length=tft_config['input_chunk_length'],
                 output_chunk_length=tft_config['output_chunk_length'],
                 # loss_fn=CustomLoss([0.1]),  # custom loss here
