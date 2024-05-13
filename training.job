@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH -J sample_training_session
-#SBATCH -t 00:05:00
-#SBATCH -p thin
+#SBATCH -J baseline_training_session
+#SBATCH -t 02:00:00
+#SBATCH -p rome
 #SBATCH -N 1
 #SBATCH --mem=60G
 #SBATCH --constraint=scratch-node
