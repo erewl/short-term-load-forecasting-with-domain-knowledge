@@ -57,6 +57,10 @@ def _init_model(model_config: dict):
                 input_chunk_length=tft_config['input_chunk_length'],
                 output_chunk_length=tft_config['output_chunk_length'],
                 # loss_fn=CustomLoss([0.1]),  # custom loss here
+                # pl_trainer_kwargs={
+                #     "accelerator": "gpu",
+                #     "devices": [0]
+                # },
                 **{k: v for k, v in tft_config.items() if
                    k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn']}
             )
@@ -108,14 +112,14 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     model = _init_model(model_config)
     logging.info("Initialized model, beginning with fitting...")
     logging.info(vars(model))
-    # train_meter, val_meter = smart_meter_ts.split_after(0.8)
+    train_tss, val_tss = zip(*[sm.split_after(0.8) for sm in smart_meter_tss])
 
     match model_config['model_class']:
         case 'LSTM':
             model.fit(
-                smart_meter_tss,
+                train_tss,
                 future_covariates=weather_forecast_tss,
-                # val_series=val_meter,
+                val_series=val_tss,
                 # val_past_covariates=weather_actuals_ts,
                 # val_future_covariates=weather_forecast_ts,
                 verbose=True,
@@ -123,12 +127,12 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
             )
         case 'TFT':
             model.fit(
-                smart_meter_tss,
+                train_tss,
                 past_covariates=weather_actuals_tss,
                 future_covariates=weather_forecast_tss,
-                # val_series=val_meter,
-                # val_past_covariates=weather_actuals_ts,
-                # val_future_covariates=weather_forecast_ts,
+                val_series=val_tss,
+                val_past_covariates=weather_actuals_ts,
+                val_future_covariates=weather_forecast_ts,
                 verbose=True,
                 # trainer=pl_trainer_kwargs # would be nice to have early stopping here
             )
