@@ -1,21 +1,22 @@
+weather_forecast_features: [ 'wind_speed_10m', 'grad_accum_ground_0m', 'pres_instant_ground_0m', 't_instant_ground_2m' ]
+weather_actuals_features: [ 'wind_speed', 'global_radiation', 'air_pressure', 'air_temperature' ]
 
-weather_forecast_features: ['wind_speed_10m', 'grad_accum_ground_0m', 'pres_instant_ground_0m', 't_instant_ground_2m']
-weather_actuals_features: ['wind_speed', 'global_radiation', 'air_pressure', 'air_temperature']
-
-model_class: 'LSTM'
+model_class: 'TFT'
+# from "Application of Temporal Fusion Transformer for Day-Ahead PV Power Forecasting"
 tft_config:
   input_chunk_length: 672 # 7*24*4
   output_chunk_length: 96 #1*24
-  hidden_size: 30
-  attention_head_size: 30
-  # lstm_layers: 2
-  batch_size: 510
+  hidden_size: 60
+  hidden_continuous_size: 30
+  num_attention_heads: 2
+  lstm_layers: 2
+  batch_size: 512
   n_epochs: 80
   dropout: 0.7
   use_static_covariates: false
   add_relative_index: false
-   optimizer_kwargs:
-     lr: 0.001
+  optimizer_kwargs:
+    lr: 0.001
   random_state: 42
   save_checkpoints: true
 #  loss_fn: "CustomLoss" # else MSE or similar metrics

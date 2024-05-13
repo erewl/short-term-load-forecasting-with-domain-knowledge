@@ -56,7 +56,7 @@ def _init_model(model_config: dict):
             return ExtendedTFTModel(
                 input_chunk_length=tft_config['input_chunk_length'],
                 output_chunk_length=tft_config['output_chunk_length'],
-                loss_fn=CustomLoss([0.1]),  # custom loss here
+                # loss_fn=CustomLoss([0.1]),  # custom loss here
                 **{k: v for k, v in tft_config.items() if
                    k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn']}
             )
@@ -148,7 +148,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     logging.info("SMAPE = {:.2f}%".format(smape(actual, pred)))
     logging.info("MAE = {:.2f}%".format(mae(actual, pred)))
 
-    model.save('./2024-05-08_tftmodel.pkl')
+    model.save('./2024-05-13_tft_model_baseline.pkl')
 
 
 if __name__ == "__main__":
