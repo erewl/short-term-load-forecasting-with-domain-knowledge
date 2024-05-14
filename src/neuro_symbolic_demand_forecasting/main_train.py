@@ -8,7 +8,7 @@ from darts import TimeSeries
 from darts.models import RNNModel, TFTModel
 from darts.dataprocessing.transformers import Scaler
 from darts.metrics import mape, smape, mae
-from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
+from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel, ExtendedRNNModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
 
 from sklearn.preprocessing import MinMaxScaler
@@ -40,57 +40,55 @@ def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSerie
     return sm_ts[sm_ts.get_index_at_point(overall_min_date):]
 
 
-def _build_torch_kwargs(kwargs: dict) -> dict:
-    if kwargs['loss_fn'] and kwargs['loss_fn'] == 'CustomLoss':
-        logging.info('Loading in custom loss function')
-        # init of custom loss
-        kwargs['loss_fn'] = CustomLoss([0.1])
-    return kwargs
-
-
 def _init_model(model_config: dict):
     match model_config['model_class']:
-        case "CustomTFT":
-            tft_config: dict = model_config['tft_config']
-            logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {tft_config}")
-            return ExtendedTFTModel(
-                input_chunk_length=tft_config['input_chunk_length'],
-                output_chunk_length=tft_config['output_chunk_length'],
-                # loss_fn=CustomLoss([0.1]),  # custom loss here
-                # pl_trainer_kwargs={
-                #     "accelerator": "gpu",
-                #     "devices": [0]
-                # },
-                **{k: v for k, v in tft_config.items() if
-                   k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn']}
-            )
         case "TFT":
             tft_config: dict = model_config['tft_config']
             logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {tft_config}")
-            return TFTModel(
-                input_chunk_length=tft_config['input_chunk_length'],
-                output_chunk_length=tft_config['output_chunk_length'],
-                # loss_fn=CustomLoss([0.1]),  # custom loss here
-                # pl_trainer_kwargs={
-                #     "accelerator": "gpu",
-                #     "devices": [0]
-                # },
-                **{k: v for k, v in tft_config.items() if
-                   k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn']}
-            )
+            if tft_config['loss_fn'] == 'Custom':
+                logging.info("Using TFTModel with Custom Module for custom Loss")
+                return ExtendedTFTModel(
+                    input_chunk_length=tft_config['input_chunk_length'],
+                    output_chunk_length=tft_config['output_chunk_length'],
+                    loss_fn=CustomLoss(),  # custom loss here
+                    # pl_trainer_kwargs={
+                    #     "accelerator": "gpu",
+                    #     "devices": [0]
+                    # },
+                    **{k: v for k, v in tft_config.items() if
+                       k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn']}
+                )
+            else:
+                return TFTModel(
+                    input_chunk_length=tft_config['input_chunk_length'],
+                    output_chunk_length=tft_config['output_chunk_length'],
+                    # pl_trainer_kwargs={
+                    #     "accelerator": "gpu",
+                    #     "devices": [0]
+                    # },
+                    **{k: v for k, v in tft_config.items() if
+                       k not in ['input_chunk_length', 'output_chunk_length']}
+                )
         case "LSTM":
             lstm_config: dict = model_config['lstm_config']
             logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {lstm_config}")
-            return RNNModel(
-                model="LSTM",
-                loss_fn=CustomLoss([0.1]),  # custom loss here
-                **{k: v for k, v in lstm_config.items() if
-                   k not in ['loss_fn']}
-            )
+            if lstm_config['loss_fn'] == 'Custom':
+                logging.info("Using TFTModel with Custom Module for custom Loss")
+                return ExtendedRNNModel(
+                    model="LSTM",
+                    loss_fn=CustomLoss(),  # custom loss here
+                    **{k: v for k, v in lstm_config.items() if
+                       k not in ['loss_fn']}
+                )
+            else:
+                return RNNModel(
+                    model="LSTM",
+                    **{k: v for k, v in lstm_config.items()}
+                )
 
 
 def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], weather_actuals_files: list[str],
-               model_config_path: str, save_validation_forecast: bool):
+               model_config_path: str, save_model_path: str):
     # load_dotenv()
     logging.info('Starting training!')
     with open(model_config_path, 'r') as file:
@@ -114,7 +112,6 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     logging.info(weather_forecast_ts.values().dtype)
     logging.info(weather_actuals_ts.values().dtype)
 
-
     # creating a series of the same length as smart_meter_ts
     weather_forecast_tss = [weather_forecast_ts for _ in sm]
     weather_actuals_tss = [weather_actuals_ts for _ in sm]
@@ -125,47 +122,63 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     # training
     model = _init_model(model_config)
     logging.info("Initialized model, beginning with fitting...")
-    logging.info(vars(model))
-    train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in smart_meter_tss])
+
     match model_config['model_class']:
         case 'LSTM':
-            model.fit(
-                train_tss,
-                future_covariates=weather_forecast_tss,
-                val_series=val_tss,
-                # val_past_covariates=weather_actuals_ts,
-                # val_future_covariates=weather_forecast_ts,
-                verbose=True,
-                # trainer=pl_trainer_kwargs # would be nice to have early stopping here
-            )
+            if model_config['run_with_validation']:
+                train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in smart_meter_tss])
+                model.fit(
+                    train_tss,
+                    future_covariates=weather_forecast_tss,
+                    val_series=val_tss,
+                    # val_past_covariates=weather_actuals_ts,
+                    val_future_covariates=weather_forecast_ts,
+                    verbose=True,
+                    # trainer=pl_trainer_kwargs # would be nice to have early stopping here
+                )
+            else:
+                model.fit(
+                    smart_meter_tss,
+                    future_covariates=weather_forecast_tss,
+                    verbose=True,
+                    # trainer=pl_trainer_kwargs # would be nice to have early stopping here
+                )
         case 'TFT':
-            model.fit(
-                train_tss,
-                past_covariates=weather_actuals_tss,
-                future_covariates=weather_forecast_tss,
-                val_series=val_tss,
-                val_past_covariates=weather_actuals_ts,
-                val_future_covariates=weather_forecast_ts,
-                verbose=True,
-                # trainer=pl_trainer_kwargs # would be nice to have early stopping here
-            )
+            if model_config['run_with_validation']:
+                train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in smart_meter_tss])
+                model.fit(
+                    train_tss,
+                    past_covariates=weather_actuals_tss,
+                    future_covariates=weather_forecast_tss,
+                    val_series=val_tss,
+                    val_past_covariates=weather_actuals_ts,
+                    val_future_covariates=weather_forecast_ts,
+                    verbose=True,
+                    # trainer=pl_trainer_kwargs # would be nice to have early stopping here
+                )
+            else:
+                model.fit(
+                    smart_meter_tss,
+                    past_covariates=weather_actuals_tss,
+                    future_covariates=weather_forecast_tss,
+                    verbose=True,
+                    # trainer=pl_trainer_kwargs # would be nice to have early stopping here
+                )
         case other:
             raise Exception(f'Training for {other} not implemented yet')
 
-
     # validate
     forecast, actual = smart_meter_tss[0][:-96], smart_meter_tss[0][-96:]
-    # # train_meter.plot()
-    # val_meter.plot()
-    #
+
     pred = model.predict(n=96, series=forecast,
                          future_covariates=weather_forecast_ts)
 
     logging.info("MAPE = {:.2f}%".format(mape(actual, pred)))
     logging.info("SMAPE = {:.2f}%".format(smape(actual, pred)))
     logging.info("MAE = {:.2f}%".format(mae(actual, pred)))
-
-    model.save('./2024-05-13_tft_model_baseline.pkl')
+    
+    logging.info(f"Saving model at {save_model_path}")
+    model.save(save_model_path)
 
 
 if __name__ == "__main__":
@@ -179,6 +192,8 @@ if __name__ == "__main__":
                         help='comma-separated list of weather actuals csv files to be used for training')
     parser.add_argument('-md', '--model-configuration', metavar='MODEL_CONFIG_PATH', type=str,
                         help='path to the model configuration YAML file')
+    parser.add_argument('-sv', '--save-model-as', metavar='MODEL_SAVE_PATH', type=str,
+                        help='path where model should be saved')
     args = parser.parse_args()
 
     if args.log_file:
@@ -195,6 +210,4 @@ if __name__ == "__main__":
     if args.weather_actuals_data:
         wad_files = [file.strip() for file in ','.join(args.weather_actuals_data).split(',')]
 
-    save_validation_forecast = True
-
-    main_train(smd_files, wfd_files, wad_files, args.model_configuration, save_validation_forecast=True)
+    main_train(smd_files, wfd_files, wad_files, args.model_configuration, args.save_model_as)
