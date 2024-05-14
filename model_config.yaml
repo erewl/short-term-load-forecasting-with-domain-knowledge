@@ -2,6 +2,8 @@ weather_forecast_features: [ 'wind_speed_10m', 'grad_accum_ground_0m', 'pres_ins
 weather_actuals_features: [ 'wind_speed', 'global_radiation', 'air_pressure', 'air_temperature' ]
 
 model_class: 'TFT'
+run_with_validation: true
+
 # from "Application of Temporal Fusion Transformer for Day-Ahead PV Power Forecasting"
 tft_config:
   input_chunk_length: 672 # 7*24*4
@@ -19,7 +21,7 @@ tft_config:
     lr: 0.001
   random_state: 42
   save_checkpoints: true
-#  loss_fn: "CustomLoss" # else MSE or similar metrics
+#  loss_fn: "Custom" # else MSE or similar metrics
 
 # tiny config for local training
 #tft_config:

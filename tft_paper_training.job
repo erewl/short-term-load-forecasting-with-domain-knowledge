@@ -1,11 +1,13 @@
 #!/bin/bash
 
-#SBATCH -J sample_training_session
-#SBATCH -t 02:00:00
+#SBATCH -J baseline_training_session
+#SBATCH -t 02:30:00
 #SBATCH -p rome
 #SBATCH --mem=60G
 #SBATCH --mail-type=BEGIN,END
 #SBATCH --mail-user=katrin.grunert@student.uva.nl
+#SBATCH --constraint=scratch-node
+
 module load 2023
 module load Python/3.11.3-GCCcore-12.3.0
 
@@ -28,8 +30,10 @@ srun poetry run python -m src.neuro_symbolic_demand_forecasting.main_train \
      -wad "$TMPDIR"/2023-06-amsterdam-actuals.csv \
      -wfd "$TMPDIR"/2023_weather_data_06_run_summer.csv \
      -md "$TMPDIR"/model_config.yaml \
+     -sv $HOME/2024-05-4_model.pkl
      -l $HOME/sample.log
 
-echo "Copying model over to home..."
-cp "$TMPDIR"/neuro_symbolic_demand_forecasting/dart_logs/* $HOME/dart_logs
-cp "$TMPDIR"/neuro_symbolic_demand_forecasting/2024-05-13_tft_model_baseline.pkl $HOME/2024-05-13_tft_model_baseline.pkl
+echo "Finished training..."
+# echo "Copying model over to home..."
+# cp "$TMPDIR"/neuro_symbolic_demand_forecasting/dart_logs/* $HOME/dart_logs
+# cp "$TMPDIR"/neuro_symbolic_demand_forecasting/2024-05-13_tft_model_baseline.pkl $HOME/2024-05-13_tft_model_baseline.pkl
