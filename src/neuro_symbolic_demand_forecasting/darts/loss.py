@@ -25,9 +25,9 @@ class CustomPLModule(pl.LightningModule):
 
 
 class CustomLoss(nn.Module):
-    def __init__(self, weights: list[float]):
+    def __init__(self):
         super(CustomLoss, self).__init__()
-        self.weights = weights
+
 
     def forward(self, output, target):
         real_target = target[-1]  # last element is the target element

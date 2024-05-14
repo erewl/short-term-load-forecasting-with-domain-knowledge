@@ -176,7 +176,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     logging.info("MAPE = {:.2f}%".format(mape(actual, pred)))
     logging.info("SMAPE = {:.2f}%".format(smape(actual, pred)))
     logging.info("MAE = {:.2f}%".format(mae(actual, pred)))
-    
+
     logging.info(f"Saving model at {save_model_path}")
     model.save(save_model_path)
 

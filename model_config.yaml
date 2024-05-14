@@ -5,40 +5,40 @@ model_class: 'TFT'
 run_with_validation: true
 
 # from "Application of Temporal Fusion Transformer for Day-Ahead PV Power Forecasting"
-tft_config:
-  input_chunk_length: 672 # 7*24*4
-  output_chunk_length: 96 #1*24
-  hidden_size: 60
-  hidden_continuous_size: 30
-  num_attention_heads: 2
-  lstm_layers: 2
-  batch_size: 512
-  n_epochs: 80
-  dropout: 0.7
-  use_static_covariates: false
-  add_relative_index: false
-  optimizer_kwargs:
-    lr: 0.001
-  random_state: 42
-  save_checkpoints: true
-#  loss_fn: "Custom" # else MSE or similar metrics
-
-# tiny config for local training
 #tft_config:
 #  input_chunk_length: 672 # 7*24*4
 #  output_chunk_length: 96 #1*24
-#  # hidden_size: 32
-#  # lstm_layers: 2
-#  # batch_size: 16
+#  hidden_size: 60
+#  hidden_continuous_size: 30
+#  num_attention_heads: 2
+#  lstm_layers: 2
+#  batch_size: 512
 #  n_epochs: 80
-#  # dropout: 0.1
-#  use_static_covariates: true
+#  dropout: 0.7
+#  use_static_covariates: false
 #  add_relative_index: false
-#  # optimizer_kwargs:
-#    # lr: 1e-3
+#  optimizer_kwargs:
+#    lr: 0.001
 #  random_state: 42
 #  save_checkpoints: true
-#  loss_fn: "CustomLoss" # else MSE or similar metrics
+#  loss_fn: "Custom" # else MSE or similar metrics
+
+# tiny config for local training
+tft_config:
+  input_chunk_length: 672 # 7*24*4
+  output_chunk_length: 96 #1*24
+  # hidden_size: 32
+  # lstm_layers: 2
+  # batch_size: 16
+  n_epochs: 80
+  # dropout: 0.1
+  use_static_covariates: true
+  add_relative_index: false
+  # optimizer_kwargs:
+    # lr: 1e-3
+  random_state: 42
+  save_checkpoints: true
+  loss_fn: "Custom" # else MSE or similar metrics
 
 
 lstm_config:
@@ -47,11 +47,11 @@ lstm_config:
   hidden_dim: 20
   dropout: 0.1
   batch_size: 32
-  n_epochs: 50
+  n_epochs: 15
   model_name: "LSTM_P4_with_CustomLoss"
   log_tensorboard: True
   random_state: 42
-  loss_fn: "CustomLoss"
+  loss_fn: "Custom"
   force_reset: True
   save_checkpoints: True
   optimizer_kwargs:
