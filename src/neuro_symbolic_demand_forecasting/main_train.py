@@ -1,13 +1,18 @@
 import argparse
 import logging
-from typing import Tuple
+from typing import Tuple, List
 
 import pandas as pd
+import torch
 import yaml
 from darts import TimeSeries
 from darts.models import RNNModel, TFTModel
 from darts.dataprocessing.transformers import Scaler
 from darts.metrics import mape, smape, mae
+from darts.models.forecasting.torch_forecasting_model import TorchForecastingModel
+from pytorch_lightning import Callback
+from pytorch_lightning.callbacks import EarlyStopping
+
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel, ExtendedRNNModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
 
@@ -40,12 +45,34 @@ def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSerie
     return sm_ts[sm_ts.get_index_at_point(overall_min_date):]
 
 
-def _init_model(model_config: dict):
+def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=None) -> TorchForecastingModel:
+    # throughout training we'll monitor the validation loss for early stopping
+    early_stopper = EarlyStopping("val_loss", min_delta=0.001, patience=3, verbose=True)
+    if callbacks is None or len(callbacks) == 0:
+        callbacks = [early_stopper]
+    else:
+        callbacks = callbacks.append(early_stopper)
+
+    # detect if a GPU is available
+    if torch.cuda.is_available() and model_config['gpu_enable']:
+        pl_trainer_kwargs = {
+            "accelerator": "gpu",
+            "gpus": -1,
+            "auto_select_gpus": True,
+            "callbacks": callbacks,
+        }
+        num_workers = 4
+    else:
+        pl_trainer_kwargs = {"callbacks": callbacks}
+        num_workers = 0
+
     match model_config['model_class']:
         case "TFT":
             tft_config: dict = model_config['tft_config']
+            if not model_config['run_learning_rate_finder'] and tft_config.get('optimizer_kwargs') is not None:
+                optimizer_kwargs = tft_config['optimizer_kwargs']
             logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {tft_config}")
-            if tft_config['loss_fn'] == 'Custom':
+            if tft_config['loss_fn'] and tft_config['loss_fn'] == 'Custom':
                 logging.info("Using TFTModel with Custom Module for custom Loss")
                 return ExtendedTFTModel(
                     input_chunk_length=tft_config['input_chunk_length'],
@@ -55,35 +82,41 @@ def _init_model(model_config: dict):
                     #     "accelerator": "gpu",
                     #     "devices": [0]
                     # },
+                    optimizer_kwargs=optimizer_kwargs,
+                    pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in tft_config.items() if
-                       k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn']}
+                       k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn', 'optimizer_kwargs']}
                 )
             else:
                 return TFTModel(
                     input_chunk_length=tft_config['input_chunk_length'],
                     output_chunk_length=tft_config['output_chunk_length'],
-                    # pl_trainer_kwargs={
-                    #     "accelerator": "gpu",
-                    #     "devices": [0]
-                    # },
+                    optimizer_kwargs=optimizer_kwargs,
+                    pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in tft_config.items() if
-                       k not in ['input_chunk_length', 'output_chunk_length']}
+                       k not in ['input_chunk_length', 'output_chunk_length', 'optimizer_kwargs']}
                 )
         case "LSTM":
             lstm_config: dict = model_config['lstm_config']
-            logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {lstm_config}")
-            if lstm_config['loss_fn'] == 'Custom':
+            if not model_config['run_learning_rate_finder'] and lstm_config.get('optimizer_kwargs') is not None:
+                optimizer_kwargs = lstm_config['optimizer_kwargs']
+            logging.info(f"Initiating the LSTM with these arguments: \n {lstm_config}")
+            if lstm_config.get('loss_fn') == 'Custom':
                 logging.info("Using TFTModel with Custom Module for custom Loss")
                 return ExtendedRNNModel(
                     model="LSTM",
                     loss_fn=CustomLoss(),  # custom loss here
+                    optimizer_kwargs=optimizer_kwargs,
+                    pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in lstm_config.items() if
-                       k not in ['loss_fn']}
+                       k not in ['loss_fn', 'optimizer_kwargs']}
                 )
             else:
                 return RNNModel(
                     model="LSTM",
-                    **{k: v for k, v in lstm_config.items()}
+                    optimizer_kwargs=optimizer_kwargs,
+                    pl_trainer_kwargs=pl_trainer_kwargs,
+                    **{k: v for k, v in lstm_config.items() if k not in ['optimizer_kwargs']}
                 )
 
 
@@ -120,23 +153,41 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     # smart_meter_tss = [s.add_datetime_attribute('weekday', one_hot=True) for s in smart_meter_tss]
 
     # training
-    model = _init_model(model_config)
+    model = _init_model(model_config, [], {})
     logging.info("Initialized model, beginning with fitting...")
 
     match model_config['model_class']:
         case 'LSTM':
             if model_config['run_with_validation']:
                 train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in smart_meter_tss])
+                if model_config['run_learning_rate_finder']:
+                    results = model.lr_find(series=train_tss,
+                                            val_series=val_tss,
+                                            future_covariates=weather_forecast_tss,
+                                            val_future_covariates=weather_forecast_tss
+                                            )
+                    logging.info(f"Suggested Learning rate: {results.suggestion()}")
+                    # re-initialzing model with updated learning params
+                    model = _init_model(model_config, callbacks=[],
+                                        optimizer_kwargs={
+                                            'lr': results.suggestion()})
                 model.fit(
                     train_tss,
                     future_covariates=weather_forecast_tss,
                     val_series=val_tss,
-                    # val_past_covariates=weather_actuals_ts,
+                    # val_past_covariates=weather_actuals_ts, # doesnt support past covariates
                     val_future_covariates=weather_forecast_ts,
                     verbose=True,
                     # trainer=pl_trainer_kwargs # would be nice to have early stopping here
                 )
             else:
+                if model_config['run_learning_rate_finder']:
+                    results = model.lr_find(series=smart_meter_tss, future_covariates=weather_forecast_tss)
+                    logging.info(f"Suggested Learning rate: {results.suggestion()}")
+                    # re-initialzing model with updated learning params
+                    model = _init_model(model_config, callbacks=[],
+                                        optimizer_kwargs={
+                                            'lr': results.suggestion()})
                 model.fit(
                     smart_meter_tss,
                     future_covariates=weather_forecast_tss,
@@ -146,6 +197,18 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
         case 'TFT':
             if model_config['run_with_validation']:
                 train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in smart_meter_tss])
+                if model_config['run_learning_rate_finder']:
+                    results = model.lr_find(series=train_tss,
+                                            past_covariates=weather_actuals_tss,
+                                            val_series=val_tss,
+                                            val_past_covariates=weather_actuals_tss,
+                                            future_covariates=weather_forecast_tss,
+                                            val_future_covariates=weather_forecast_tss
+                                            )
+                    logging.info(f"Suggested Learning rate: {results.suggestion()}")
+                    model = _init_model(model_config, callbacks=[],
+                                        optimizer_kwargs={
+                                            'lr': results.suggestion()})  # re-initialzing model with updated learning params
                 model.fit(
                     train_tss,
                     past_covariates=weather_actuals_tss,
@@ -157,6 +220,14 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                     # trainer=pl_trainer_kwargs # would be nice to have early stopping here
                 )
             else:
+                if model_config['run_learning_rate_finder']:
+                    results = model.lr_find(series=smart_meter_tss,
+                                            past_covariates=weather_actuals_ts,
+                                            future_covariates=weather_forecast_tss)
+                    logging.info(f"Suggested Learning rate: {results.suggestion()}")
+                    model = _init_model(model_config, callbacks=[],
+                                        optimizer_kwargs={
+                                            'lr': results.suggestion()})  # re-initialzing model with updated learning params
                 model.fit(
                     smart_meter_tss,
                     past_covariates=weather_actuals_tss,
@@ -196,11 +267,7 @@ if __name__ == "__main__":
                         help='path where model should be saved')
     args = parser.parse_args()
 
-    if args.log_file:
-        logging.basicConfig(level=logging.INFO, filename=args.log_file)
-    else:
-        print("No log file specified, writing to stdout")
-        logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     smd_files, wfd_files, wad_files = [], [], []
     if args.smart_meter_data:

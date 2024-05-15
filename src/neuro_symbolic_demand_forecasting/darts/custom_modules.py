@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple
 
 import numpy as np
@@ -24,6 +25,10 @@ class ExtendedRNNModel(RNNModel):
         nr_params = 1 if self.likelihood is None else self.likelihood.num_parameters
 
         kwargs = {}
+        if isinstance(self.rnn_type_or_module, str):
+            kwargs["name"] = self.rnn_type_or_module
+
+        logging.debug("Initiating custom rnn module")
         return _CustomRNNModule(
             input_size=input_dim,
             target_size=output_dim,
@@ -39,6 +44,7 @@ class ExtendedRNNModel(RNNModel):
 class _CustomRNNModule(_RNNModule, CustomPLModule):
     def training_step(self, train_batch, batch_idx):
         # Call the training_step method from _CustomPLModule
+        logging.debug("Delegating training_step")
         return CustomPLModule.training_step(self, train_batch, batch_idx)
 
 
@@ -213,4 +219,5 @@ class ExtendedTFTModel(TFTModel):
 class _CustomTFTModule(_TFTModule, CustomPLModule):
     def training_step(self, train_batch, batch_idx):
         # Call the training_step method from _CustomPLModule
+        logging.debug("Delegating training_step")
         return CustomPLModule.training_step(self, train_batch, batch_idx)
