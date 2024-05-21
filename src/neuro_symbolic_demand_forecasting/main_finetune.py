@@ -1,18 +1,150 @@
 import logging
 
-def main_train():
-    # load_dotenv()
-    logging.info("Hello!")
+import argparse
 
-    # load data, smart meter, weather, actuals
-    # transform to darts.Timeseries
-    # load hyperparameter configs for optimization
-    # load loss function
-    # initiate model
-    # train
-    # validate
+import numpy as np
+import optuna
+import torch
+import yaml
+from darts.metrics import smape
+from optuna.integration import PyTorchLightningPruningCallback
+from optuna.visualization import plot_param_importances, plot_contour, plot_optimization_history
+from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
+from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
+from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes
+
+
+def print_callback(study, trial):
+    print(f"Current value: {trial.value}, Current params: {trial.params}")
+    print(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
+
+
+def create_objective(model_config: dict, data: tuple):
+    match model_config['model_class']:
+        case 'TFT':
+            return create_tft_objective(model_config['tft_config'], data)
+        case default:
+            raise Exception(f'No config implement yet for model of type: {default}')
+
+
+def create_tft_objective(tft_config: dict, data: tuple):
+    # Function to generate the range
+
+    _config = {}
+    for i, f in tft_config.items():
+        if i == 'loss_fn' and f == 'Custom':
+            _config[i] = CustomLoss()
+        else:
+            _config[i] = f
+    logging.info(_config)
+
+    sms, wfts, wats = data
+
+    def objective(trial):
+        def get_suggestion(suggest_fn, name):
+            return suggest_fn(name,
+                              low=_config[name]['start'],
+                              high=_config[name]['end'],
+                              step=_config[name]['increment'])
+
+        callbacks = [PyTorchLightningPruningCallback(trial, monitor="val_loss")]
+
+        input_chunk_length = get_suggestion(trial.suggest_int, 'input_chunk_length')
+        hidden_size = get_suggestion(trial.suggest_int, 'hidden_size')
+        hidden_continuous_size = get_suggestion(trial.suggest_int, 'hidden_continuous_size')
+        num_attention_heads = get_suggestion(trial.suggest_int, 'num_attention_heads')
+        lstm_layers = get_suggestion(trial.suggest_int, 'lstm_layers')
+        batch_size = get_suggestion(trial.suggest_int, 'batch_size')
+        dropout = get_suggestion(trial.suggest_float, 'dropout')
+
+        model = ExtendedTFTModel(
+            input_chunk_length=input_chunk_length,
+            output_chunk_length=_config['output_chunk_length'],
+            hidden_size=hidden_size,
+            hidden_continuous_size=hidden_continuous_size,
+            num_attention_heads=num_attention_heads,
+            lstm_layers=lstm_layers,
+            batch_size=batch_size,
+            dropout=dropout,
+            loss_fn=_config['loss_fn'],
+            # pl_trainer_kwargs={"callbacks": callbacks}
+        )
+
+        train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in sms])
+        # train the model
+        model.fit(
+            series=train_tss,
+            past_covariates=wats,
+            future_covariates=wfts,
+            val_series=sms,
+            val_past_covariates=wats,
+            val_future_covariates=wfts,
+            # max_samples_per_ts=MAX_SAMPLES_PER_TS,
+            # num_loader_workers=num_workers,
+        )
+
+        # Evaluate how good it is on the validation set
+        preds = model.predict(series=train_tss,
+                              past_covariates=wats,
+                              future_covariates=wfts, n=96)
+
+        smapes = smape(val_tss, preds, n_jobs=-1, verbose=True)
+        smape_val = np.mean(smapes)
+
+        return smape_val if smape_val != np.nan else float("inf")
+
+    return objective
+
+
+def main_finetune(smart_meter_files: list[str], weather_forecast_files: list[str], weather_actuals_files: list[str],
+                  model_config_path: str, save_model_path: str):
+    logging.info('Starting training!')
+    with open(model_config_path, 'r') as file:
+        logging.info(f'Loading config from {model_config_path}')
+        model_config = yaml.safe_load(file)
+
+    sm, wf, wa = load_csvs(model_config, smart_meter_files, weather_forecast_files, weather_actuals_files)
+    smart_meter_tss, weather_forecast_ts, weather_actuals_ts = create_timeseries_from_dataframes(sm, wf, wa,
+                                                                                                 scale=True,
+                                                                                                 pickle_scalers=True)
+
+    objective = create_objective(model_config, data=(smart_meter_tss, weather_forecast_ts, weather_actuals_ts))
+
+    study = optuna.create_study(direction="minimize")
+    study.optimize(objective, timeout=7200, callbacks=[print_callback])
+    # to limit the number of trials instead:
+    # study.optimize(objective, n_trials=100, callbacks=[print_callback])
+
+    print(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
+
+    # only run this locally
+    # plot_optimization_history(study)
+    # plot_contour(study, params=["lr", "num_filters"])
+    # plot_param_importances(study)
+
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    main_train()
+    parser = argparse.ArgumentParser(description='Finetune a model based on hyperparameters ranges in config file')
+    parser.add_argument('-smd', '--smart-meter-data', metavar='SMD_FILES', type=str, nargs='+',
+                        help='comma-separated list of smart meter data csv files to be used for training')
+    parser.add_argument('-wfd', '--weather-forecast-data', metavar='WFD_FILES', type=str, nargs='+',
+                        help='comma-separated list of weather forecast csv files to be used for training')
+    parser.add_argument('-wad', '--weather-actuals-data', metavar='WAD_FILES', type=str, nargs='+',
+                        help='comma-separated list of weather actuals csv files to be used for training')
+    parser.add_argument('-md', '--model-configuration', metavar='MODEL_CONFIG_PATH', type=str,
+                        help='path to the model configuration YAML file')
+    parser.add_argument('-sv', '--save-model-as', metavar='MODEL_SAVE_PATH', type=str,
+                        help='path where model should be saved')
+    args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO)
+
+    smd_files, wfd_files, wad_files = [], [], []
+    if args.smart_meter_data:
+        smd_files = [file.strip() for file in ','.join(args.smart_meter_data).split(',')]
+    if args.weather_forecast_data:
+        wfd_files = [file.strip() for file in ','.join(args.weather_forecast_data).split(',')]
+    if args.weather_actuals_data:
+        wad_files = [file.strip() for file in ','.join(args.weather_actuals_data).split(',')]
+
+    main_finetune(smd_files, wfd_files, wad_files, args.model_configuration, args.save_model_as)

@@ -2,6 +2,10 @@ import argparse
 import logging
 from typing import Tuple, List
 
+import pytz
+from astral.sun import sun
+from astral import LocationInfo
+import datetime as dt
 import pandas as pd
 import torch
 import yaml
@@ -18,23 +22,37 @@ from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
 
 from sklearn.preprocessing import MinMaxScaler
 
+# timezones
+AMS_TZ = pytz.timezone('Europe/Amsterdam')
 
-def _load_csvs(_config: dict, _smart_meter_files: list[str], _weather_forecast_files: list[str],
-               _weather_actuals_files: list[str]) -> Tuple[list[pd.DataFrame], pd.DataFrame, pd.DataFrame]:
-    sms = [pd.read_csv(s, index_col=None, parse_dates=['readingdate']).set_index('readingdate') for s in
+
+def load_csvs(_config: dict, _smart_meter_files: list[str], _weather_forecast_files: list[str],
+              _weather_actuals_files: list[str]) -> Tuple[list[pd.DataFrame], pd.DataFrame, pd.DataFrame]:
+    sms = [pd.read_csv(s, index_col=None, parse_dates=['readingdate']) \
+               .set_index('readingdate') for s in
            _smart_meter_files]
+    for i, s in enumerate(sms):
+        sms[i].index = s.index.tz_convert(AMS_TZ)
 
     wf = pd.read_csv(_weather_forecast_files[0], index_col=None, parse_dates=['valid_datetime']).set_index(
         'valid_datetime')
+    wf.index = wf.index.tz_localize(None).tz_localize(AMS_TZ)
     wf = wf[_config['weather_forecast_features']]
     wf = wf.resample('15min').ffill()
 
     wa = pd.read_csv(_weather_actuals_files[0], index_col=None, parse_dates=['datetime_from']).set_index(
         'datetime_from')
+    wa.index = wa.index.tz_localize(None).tz_localize(AMS_TZ)
     wa = wa[_config['weather_actuals_features']]
     wa = wa.resample('15min').mean()
 
     return sms, wf, wa
+
+
+def encode_ptu(idx):
+    total_minutes = idx.hour * 60 + idx.minute
+    ptu = total_minutes // 15
+    return ptu + 1
 
 
 def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSeries:
@@ -66,6 +84,15 @@ def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=
         pl_trainer_kwargs = {"callbacks": callbacks}
         num_workers = 0
 
+    encoders = {
+        # 'cyclic': {'future': ['month']},
+        'datetime_attribute': {'future': ['dayofweek'], 'past': ['dayofweek']},
+        'custom': {'past': [encode_ptu], 'future': [encode_ptu]},
+        # 'position': {'past': ['relative'], 'future': ['relative']},
+        # 'transformer': Scaler(),
+        'tz': 'Europe/Amsterdam'
+    }
+
     match model_config['model_class']:
         case "TFT":
             tft_config: dict = model_config['tft_config']
@@ -78,11 +105,8 @@ def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=
                     input_chunk_length=tft_config['input_chunk_length'],
                     output_chunk_length=tft_config['output_chunk_length'],
                     loss_fn=CustomLoss(),  # custom loss here
-                    # pl_trainer_kwargs={
-                    #     "accelerator": "gpu",
-                    #     "devices": [0]
-                    # },
                     optimizer_kwargs=optimizer_kwargs,
+                    add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in tft_config.items() if
                        k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn', 'optimizer_kwargs']}
@@ -92,6 +116,7 @@ def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=
                     input_chunk_length=tft_config['input_chunk_length'],
                     output_chunk_length=tft_config['output_chunk_length'],
                     optimizer_kwargs=optimizer_kwargs,
+                    add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in tft_config.items() if
                        k not in ['input_chunk_length', 'output_chunk_length', 'optimizer_kwargs']}
@@ -120,6 +145,53 @@ def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=
                 )
 
 
+def get_part_of_day(s, _city: LocationInfo):
+    i = s.name
+    sun_info = sun(_city.observer, date=i.date())
+    sunrise = sun_info['sunrise'].astimezone(AMS_TZ).time()
+    sunset = sun_info['sunset'].astimezone(AMS_TZ).time()
+
+    if i.time() < sunrise or i.time() > sunset:
+        return 'Night'
+    elif sunrise <= i.time() < dt.time(9, 0, 0):
+        return 'Morning'
+    elif dt.time(9, 0, 0) <= i.time() < dt.time(13, 0, 0):
+        return 'Midday'
+    elif dt.time(13, 0, 0) <= i.time() < dt.time(17, 0, 0):
+        return 'Afternoon'
+    else:
+        return 'Evening'
+
+
+def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, wa: pd.DataFrame, scale: bool,
+                                      pickle_scalers: bool) -> Tuple[
+    List[TimeSeries], List[TimeSeries], List[TimeSeries]]:
+    # transforming to TimeSeries
+    weather_forecast_ts = TimeSeries.from_dataframe(wf)
+    weather_actuals_ts = TimeSeries.from_dataframe(wa)
+    smart_meter_tss = [TimeSeries.from_dataframe(s) for s in sm]
+
+    # scaling
+    weather_forecast_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
+    weather_actuals_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
+    smart_meter_scaler = Scaler(MinMaxScaler(feature_range=(-1, 1)))
+
+    if scale:
+        logging.info("Scaling ")
+        weather_forecast_ts = weather_forecast_scaler.fit_transform(weather_forecast_ts)
+        weather_actuals_ts = weather_actuals_scaler.fit_transform(weather_actuals_ts)
+        smart_meter_tss = smart_meter_scaler.fit_transform(smart_meter_tss)
+    if pickle_scalers:
+        logging.info("Pickling the scalers for later use here: ....")
+
+    weather_forecast_tss = [weather_forecast_ts for _ in sm]
+    weather_actuals_tss = [weather_actuals_ts for _ in sm]
+    smart_meter_tss = [_adjust_start_date(s, weather_forecast_ts.time_index.min(),
+                                          weather_actuals_ts.time_index.min()) for s in smart_meter_tss]
+
+    return smart_meter_tss, weather_forecast_tss, weather_actuals_tss
+
+
 def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], weather_actuals_files: list[str],
                model_config_path: str, save_model_path: str):
     # load_dotenv()
@@ -128,29 +200,17 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
         logging.info(f'Loading config from {model_config_path}')
         model_config = yaml.safe_load(file)
 
-    # loading
-    sm, wf, wa = _load_csvs(model_config, smart_meter_files, weather_forecast_files, weather_actuals_files)
+    city = LocationInfo("Amsterdam", "Netherlands", "Europe/Amsterdam")
 
-    # scaling
-    weather_forecast_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
-    weather_actuals_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
-    smart_meter_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
-
-    weather_forecast_ts = weather_forecast_scaler.fit_transform(TimeSeries.from_dataframe(wf))
-    weather_actuals_ts = weather_actuals_scaler.fit_transform(TimeSeries.from_dataframe(wa))
-    smart_meter_tss = smart_meter_scaler.fit_transform([TimeSeries.from_dataframe(s) for s in sm])
-
+    # loading and bringing dataframes into appropriate shape and format
+    sm, wf, wa = load_csvs(model_config, smart_meter_files, weather_forecast_files, weather_actuals_files)
+    smart_meter_tss, weather_forecast_ts, weather_actuals_ts = create_timeseries_from_dataframes(sm, wf, wa,
+                                                                                                 scale=True,
+                                                                                                 pickle_scalers=True)
     logging.info("Dtypes of SM, WF, WA")
     logging.info(smart_meter_tss[0].values().dtype)
-    logging.info(weather_forecast_ts.values().dtype)
-    logging.info(weather_actuals_ts.values().dtype)
-
-    # creating a series of the same length as smart_meter_ts
-    weather_forecast_tss = [weather_forecast_ts for _ in sm]
-    weather_actuals_tss = [weather_actuals_ts for _ in sm]
-    smart_meter_tss = [_adjust_start_date(s, weather_forecast_ts.time_index.min(),
-                                          weather_actuals_ts.time_index.min()) for s in smart_meter_tss]
-    # smart_meter_tss = [s.add_datetime_attribute('weekday', one_hot=True) for s in smart_meter_tss]
+    logging.info(weather_forecast_ts[0].values().dtype)
+    logging.info(weather_actuals_ts[0].values().dtype)
 
     # training
     model = _init_model(model_config, [], {})
@@ -267,7 +327,7 @@ if __name__ == "__main__":
                         help='path where model should be saved')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
 
     smd_files, wfd_files, wad_files = [], [], []
     if args.smart_meter_data:

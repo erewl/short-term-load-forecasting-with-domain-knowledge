@@ -1,0 +1,91 @@
+weather_forecast_features: [ 'wind_speed_10m', 'grad_accum_ground_0m', 'pres_instant_ground_0m', 't_instant_ground_2m', 'r_instant_ground_2m' ]
+weather_actuals_features: [ 'wind_speed', 'global_radiation', 'air_pressure', 'air_temperature', 'relative_humidity' ]
+
+model_class: 'TFT'
+run_with_validation: true
+gpu_enable: false
+run_learning_rate_finder: false
+
+# from "Application of Temporal Fusion Transformer for Day-Ahead PV Power Forecasting"
+# input_chunk_length: [336, 1008]
+# output_chunk_length: 96
+# hidden_size: [32, 128]
+# hidden_continuous_size: [16, 64]
+# num_attention_heads: [1, 8]
+# lstm_layers: [1, 4]
+# batch_size: [64, 1024]
+# n_epochs: [50, 200]
+# dropout: [0.1, 0.7]
+# learning_rate (lr): [0.0001, 0.01]
+tft_config:
+  input_chunk_length:
+    start: 672 # 7*24*4
+    end: 1344
+    increment: 672
+  output_chunk_length: 96 #1*24
+  hidden_size:
+    start: 32
+    end: 128
+    increment: 32
+  hidden_continuous_size: #[16, 32, 64]
+    start: 16
+    end: 64
+    increment: 16
+  num_attention_heads:
+    start: 2
+    end: 8
+    increment: 2
+  lstm_layers:
+    start: 1
+    end: 4
+    increment: 1
+  batch_size:
+    start: 16
+    end: 128
+    increment: 16
+  n_epochs: 80
+  dropout:
+    start: 0.1
+    end: 0.7
+    increment: 0.2
+  use_static_covariates: [ false, true ]
+  add_relative_index: [ false, true ]
+  optimizer_kwargs:
+    lr: 0.03
+  #  random_state: 42
+  #  save_checkpoints: true
+  loss_fn: "Custom" # else MSE or similar metrics
+
+## tiny config for local training
+#tft_config:
+#  input_chunk_length: 672 # 7*24*4
+#  output_chunk_length: 96 #1*24
+#  # hidden_size: 32
+#  # lstm_layers: 2
+#  # batch_size: 16
+#  n_epochs: 4
+#  # dropout: 0.1
+#  use_static_covariates: true
+#  add_relative_index: false
+#  optimizer_kwargs:
+#   lr: 0.04365158322401657
+#  random_state: 42
+#  save_checkpoints: true
+#  loss_fn: "Custom" # else MSE or similar metrics
+
+
+#lstm_config:
+#  training_length: 672
+#  input_chunk_length: 672 # 7*24*4
+#  hidden_dim: 20
+#  dropout: 0.1
+#  batch_size: 32
+#  n_epochs: 1
+#  model_name: "LSTM_P4_with_CustomLoss"
+#  log_tensorboard: True
+#  random_state: 42
+#  #  loss_fn: "Custom"
+#  force_reset: True
+#  save_checkpoints: True
+##  optimizer_kwargs:
+##    lr: 0.001
