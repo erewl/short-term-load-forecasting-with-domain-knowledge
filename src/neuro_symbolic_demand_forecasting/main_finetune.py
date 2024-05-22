@@ -87,7 +87,6 @@ def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
         model = model_cls(
             input_chunk_length=input_chunk_length,
             output_chunk_length=_config['output_chunk_length'],
-            epochs=100,
             hidden_size=hidden_size,
             hidden_continuous_size=hidden_continuous_size,
             num_attention_heads=num_attention_heads,
@@ -110,6 +109,7 @@ def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
             val_series=sms,
             val_past_covariates=wats,  # actuals
             val_future_covariates=wfts,  # forecasts
+            epochs=100,
             trainer=pl.Trainer(),
             # max_samples_per_ts=MAX_SAMPLES_PER_TS,
             num_loader_workers=num_workers,
