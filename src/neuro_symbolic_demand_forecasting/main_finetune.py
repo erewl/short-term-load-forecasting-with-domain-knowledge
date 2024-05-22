@@ -17,7 +17,7 @@ from pytorch_lightning.callbacks import EarlyStopping
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
 from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes, \
-    create_encoders
+    create_encoders, get_trainer_kwargs
 
 
 def print_callback(study, trial):
@@ -52,9 +52,8 @@ def create_tft_objective(_config: dict, data: tuple):
                               high=_config[name]['end'],
                               step=_config[name]['increment'])
 
-        early_stopper = EarlyStopping("val_loss", min_delta=0.001, patience=10, verbose=True)
-
-        callbacks = [early_stopper, PyTorchLightningPruningCallback(trial, monitor="val_acc")]
+        pl_trainer_kwargs, num_workers = get_trainer_kwargs(_config, [
+            PyTorchLightningPruningCallback(trial, monitor="val_loss")])
 
         input_chunk_length = get_suggestion(trial.suggest_int, 'input_chunk_length')
         hidden_size = get_suggestion(trial.suggest_int, 'hidden_size')
@@ -64,6 +63,7 @@ def create_tft_objective(_config: dict, data: tuple):
         batch_size = get_suggestion(trial.suggest_int, 'batch_size')
         dropout = get_suggestion(trial.suggest_float, 'dropout')
 
+        # TODO could be reused in training too
         model_cls = TFTModel
         match _config.get('loss_fn'):
             case 'MSE':
@@ -74,7 +74,6 @@ def create_tft_objective(_config: dict, data: tuple):
             case other:
                 logging.info(f'{other} not implemented yet, falling back to MSE')
                 loss_fn = nn.MSELoss()
-
         logging.info(f"Initializing Model {model_cls} with {loss_fn}")
 
         model = model_cls(
@@ -88,7 +87,7 @@ def create_tft_objective(_config: dict, data: tuple):
             add_encoders=create_encoders(),
             dropout=dropout,
             loss_fn=loss_fn,
-            pl_trainer_kwargs={"callbacks": callbacks}
+            pl_trainer_kwargs=pl_trainer_kwargs
         )
 
         train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in sms])
@@ -100,9 +99,9 @@ def create_tft_objective(_config: dict, data: tuple):
             val_series=sms,
             val_past_covariates=wats,  # actuals
             val_future_covariates=wfts,  # forecasts
-            trainer=pl.Trainer()
+            trainer=pl.Trainer(),
             # max_samples_per_ts=MAX_SAMPLES_PER_TS,
-            # num_loader_workers=num_workers,
+            num_loader_workers=num_workers,
         )
 
         # Evaluate how good it is on the validation set

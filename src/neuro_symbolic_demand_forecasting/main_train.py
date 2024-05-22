@@ -78,8 +78,7 @@ def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSerie
     return sm_ts[sm_ts.get_index_at_point(overall_min_date):]
 
 
-def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=None) -> TorchForecastingModel:
-    # throughout training we'll monitor the validation loss for early stopping
+def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]:
     early_stopper = EarlyStopping("val_loss", min_delta=0.001, patience=3, verbose=True)
     if callbacks is None or len(callbacks) == 0:
         callbacks = [early_stopper]
@@ -87,26 +86,24 @@ def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=
         callbacks = callbacks.append(early_stopper)
 
     # detect if a GPU is available
-    if torch.cuda.is_available() and model_config['gpu_enable']:
+    if torch.cuda.is_available() and _model_config['gpu_enable']:
         pl_trainer_kwargs = {
             "accelerator": "gpu",
             "gpus": -1,
             "auto_select_gpus": True,
             "callbacks": callbacks,
         }
-        num_workers = 4
+        num_workers = 8
     else:
         pl_trainer_kwargs = {"callbacks": callbacks}
         num_workers = 0
+    return pl_trainer_kwargs, num_workers
 
-    encoders = {
-        # 'cyclic': {'future': ['month']},
-        'datetime_attribute': {'future': ['dayofweek'], 'past': ['dayofweek']},
-        'custom': {'past': [encode_ptu], 'future': [encode_ptu]},
-        # 'position': {'past': ['relative'], 'future': ['relative']},
-        # 'transformer': Scaler(),
-        'tz': 'Europe/Amsterdam'
-    }
+
+def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=None) -> TorchForecastingModel:
+    # throughout training we'll monitor the validation loss for early stopping
+    pl_trainer_kwargs = get_trainer_kwargs(model_config, callbacks)
+    encoders = create_encoders()
 
     match model_config['model_class']:
         case "TFT":
@@ -226,7 +223,6 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
 
     city = LocationInfo("Amsterdam", "Netherlands", "Europe/Amsterdam")
 
-
     # Creating folder to safe scalers and model 'YYYYMMDD_HHMM'
     folder_name = dt.datetime.now().strftime('%Y%m%d_%H%M')
     path = os.path.join('.', f'{folder_name}_{save_model_path}')
@@ -299,7 +295,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
             )
         else:
             raise Exception(f'Training for other models not implemented yet')
-    else: # without validation
+    else:  # without validation
         # TFT without validation
         if model.supports_past_covariates and model.supports_future_covariates:
             if model_config['run_learning_rate_finder']:
@@ -334,7 +330,6 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
             )
         else:
             raise Exception(f'Training for other models not implemented yet')
-
 
     # validate
     forecast, actual = smart_meter_tss[0][:-96], smart_meter_tss[0][-96:]

@@ -1,0 +1,33 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu
+#SBATCH --gpus=2
+#SBATCH --job-name=FinetuneTFT
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --constraint=scratch-node
+#SBATCH --time=06:00:00
+#SBATCH --mem=64G
+
+module load 2023
+module load Python/3.11.3-GCCcore-12.3.0
+
+cd $HOME/neuro-symbolic-demand-forecasting
+poetry install
+poetry shell
+
+# Activate your environment
+source activate dl2023
+# Check whether the GPU is available
+srun python -uc "import torch; print('GPU available?', torch.cuda.is_available())"
+
+#Copy input file to scratch
+cp $HOME/2023_06_cleaned_data.csv "$TMPDIR"
+cp $HOME/2023-06-amsterdam-actuals.csv "$TMPDIR"
+cp $HOME/2023_weather_data_06_run_summer.csv "$TMPDIR"
+cp $HOME/model_config.yaml "$TMPDIR"
+
+srun python -m src.neuro_symbolic_demand_forecasting.main_train -smd "$TMPDIR"/2023_06_cleaned_data.csv  -wad "$TMPDIR"/2023-06-amsterdam-actuals.csv -wfd "$TMPDIR"/2023_weather_data_06_run_summer.csv -md "$TMPDIR"/model_config.yaml
+
+# cp # move model to $HOME/models/ directory
+# run with sbatch training.job
