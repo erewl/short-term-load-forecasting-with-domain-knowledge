@@ -13,7 +13,6 @@ module load Python/3.11.3-GCCcore-12.3.0
 
 cd $HOME/neuro-symbolic-demand-forecasting
 poetry install
-poetry shell
 
 # Check whether the GPU is available
 srun python -uc "import torch; print('GPU available?', torch.cuda.is_available())"
@@ -24,9 +23,10 @@ cp $HOME/data/2023_05_cleaned_pv.csv "$TMPDIR"/data
 cp $HOME/data/2023_06_cleaned_pv.csv "$TMPDIR"/data
 cp $HOME/data/2023-04_to_08-amsterdam-actuals.csv "$TMPDIR"/data
 cp $HOME/data/2023_weather_data_06_run_summer_from_04_to_08.csv "$TMPDIR"/data
-cp $HOME/data/model_finetune_config.yaml "$TMPDIR"/data
+cp $HOME/neuro-symbolic-demand-forecasting/model_finetune_config.yaml "$TMPDIR"/data
 
-srun python -m src.neuro_symbolic_demand_forecasting.main_finetune \
+echo "Starting hyperparameter tuning..."
+srun poetry run python -m src.neuro_symbolic_demand_forecasting.main_finetune \
         -smd "$TMPDIR"/data/2023_05_cleaned_pv.csv,data/2023_06_cleaned_pv.csv \
         -wad "$TMPDIR"/data/2023-04_to_08-amsterdam-actuals.csv \
         -wfd "$TMPDIR"/data/2023_weather_data_06_run_summer_from_04_to_08.csv \
