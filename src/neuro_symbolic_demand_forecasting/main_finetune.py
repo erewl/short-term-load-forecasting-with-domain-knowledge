@@ -59,6 +59,18 @@ def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
         use_static_covariates = trial.suggest_categorical("use_static_covariates", [False, True])
         add_relative_index = trial.suggest_categorical("add_relative_index", [False, True])
 
+        logging.info(
+            f"PARAMS: \n input_chunk_length: {input_chunk_length}, "
+            f"\n hidden_size: {hidden_size}, "
+            f"\n hidden_continuous_size: {hidden_continuous_size}, "
+            f"\n num_attention_heads: {num_attention_heads}, "
+            f"\n lstm_layers: {lstm_layers}, "
+            f"\n batch_size: {batch_size}, "
+            f"\n dropout: {dropout}, "
+            f"\n use_static_covariates: {use_static_covariates}, "
+            f"\n add_relative_index: {add_relative_index}"
+        )
+
         # TODO could be reused in training too
         model_cls = TFTModel
         match _config.get('loss_fn'):
@@ -75,6 +87,7 @@ def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
         model = model_cls(
             input_chunk_length=input_chunk_length,
             output_chunk_length=_config['output_chunk_length'],
+            epochs=100,
             hidden_size=hidden_size,
             hidden_continuous_size=hidden_continuous_size,
             num_attention_heads=num_attention_heads,

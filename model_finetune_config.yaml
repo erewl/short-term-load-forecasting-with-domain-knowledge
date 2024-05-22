@@ -41,7 +41,7 @@ tft_config:
   use_static_covariates: [ false, true ]
   add_relative_index: [ false, true ]
   optimizer_kwargs:
-    lr: 0.03
+    lr: 0.015
   #  random_state: 42
   #  save_checkpoints: true
   loss_fn: "MSE" # Custom or MSE or similar metrics

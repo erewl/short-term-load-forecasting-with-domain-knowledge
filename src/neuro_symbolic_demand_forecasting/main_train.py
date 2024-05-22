@@ -93,7 +93,7 @@ def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]
             "auto_select_gpus": True,
             "callbacks": callbacks,
         }
-        num_workers = 8
+        num_workers = 4
     else:
         pl_trainer_kwargs = {"callbacks": callbacks}
         num_workers = 0
