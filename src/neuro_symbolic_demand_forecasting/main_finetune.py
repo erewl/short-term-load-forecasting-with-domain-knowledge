@@ -1,17 +1,23 @@
 import logging
 
 import argparse
-
+import os
+import torch.nn as nn
 import numpy as np
 import optuna
-import torch
 import yaml
+import datetime as dt
+import pytorch_lightning as pl
 from darts.metrics import smape
-from optuna.integration import PyTorchLightningPruningCallback
+from darts.models import TFTModel
 from optuna.visualization import plot_param_importances, plot_contour, plot_optimization_history
+from optuna_integration.pytorch_lightning import PyTorchLightningPruningCallback
+from pytorch_lightning.callbacks import EarlyStopping
+
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
-from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes
+from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes, \
+    create_encoders
 
 
 def print_callback(study, trial):
@@ -27,15 +33,14 @@ def create_objective(model_config: dict, data: tuple):
             raise Exception(f'No config implement yet for model of type: {default}')
 
 
-def create_tft_objective(tft_config: dict, data: tuple):
-    # Function to generate the range
-
-    _config = {}
-    for i, f in tft_config.items():
-        if i == 'loss_fn' and f == 'Custom':
-            _config[i] = CustomLoss()
-        else:
-            _config[i] = f
+def create_tft_objective(_config: dict, data: tuple):
+    #
+    # _config = {}
+    # for i, f in tft_config.items():
+    #     if i == 'loss_fn' and f == 'Custom':
+    #         _config[i] = CustomLoss()
+    #     else:
+    #         _config[i] = f
     logging.info(_config)
 
     sms, wfts, wats = data
@@ -47,7 +52,9 @@ def create_tft_objective(tft_config: dict, data: tuple):
                               high=_config[name]['end'],
                               step=_config[name]['increment'])
 
-        callbacks = [PyTorchLightningPruningCallback(trial, monitor="val_loss")]
+        early_stopper = EarlyStopping("val_loss", min_delta=0.001, patience=10, verbose=True)
+
+        callbacks = [early_stopper, PyTorchLightningPruningCallback(trial, monitor="val_acc")]
 
         input_chunk_length = get_suggestion(trial.suggest_int, 'input_chunk_length')
         hidden_size = get_suggestion(trial.suggest_int, 'hidden_size')
@@ -57,7 +64,20 @@ def create_tft_objective(tft_config: dict, data: tuple):
         batch_size = get_suggestion(trial.suggest_int, 'batch_size')
         dropout = get_suggestion(trial.suggest_float, 'dropout')
 
-        model = ExtendedTFTModel(
+        model_cls = TFTModel
+        match _config.get('loss_fn'):
+            case 'MSE':
+                loss_fn = nn.MSELoss()
+            case 'Custom':
+                loss_fn = CustomLoss()
+                model_cls = ExtendedTFTModel
+            case other:
+                logging.info(f'{other} not implemented yet, falling back to MSE')
+                loss_fn = nn.MSELoss()
+
+        logging.info(f"Initializing Model {model_cls} with {loss_fn}")
+
+        model = model_cls(
             input_chunk_length=input_chunk_length,
             output_chunk_length=_config['output_chunk_length'],
             hidden_size=hidden_size,
@@ -65,20 +85,22 @@ def create_tft_objective(tft_config: dict, data: tuple):
             num_attention_heads=num_attention_heads,
             lstm_layers=lstm_layers,
             batch_size=batch_size,
+            add_encoders=create_encoders(),
             dropout=dropout,
-            loss_fn=_config['loss_fn'],
-            # pl_trainer_kwargs={"callbacks": callbacks}
+            loss_fn=loss_fn,
+            pl_trainer_kwargs={"callbacks": callbacks}
         )
 
         train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in sms])
         # train the model
         model.fit(
             series=train_tss,
-            past_covariates=wats,
-            future_covariates=wfts,
+            past_covariates=wats,  # actuals
+            future_covariates=wfts,  # forecasts
             val_series=sms,
-            val_past_covariates=wats,
-            val_future_covariates=wfts,
+            val_past_covariates=wats,  # actuals
+            val_future_covariates=wfts,  # forecasts
+            trainer=pl.Trainer()
             # max_samples_per_ts=MAX_SAMPLES_PER_TS,
             # num_loader_workers=num_workers,
         )
@@ -103,10 +125,16 @@ def main_finetune(smart_meter_files: list[str], weather_forecast_files: list[str
         logging.info(f'Loading config from {model_config_path}')
         model_config = yaml.safe_load(file)
 
+    # Creating folder to safe scalers and model 'YYYYMMDD_HHMM'
+    folder_name = dt.datetime.now().strftime('%Y%m%d_%H%M')
+    path = os.path.join('.', f'{folder_name}_{save_model_path}')
+    os.makedirs(path)
+    logging.info(f"Saving everything related to this model training run at: {path}")
+
     sm, wf, wa = load_csvs(model_config, smart_meter_files, weather_forecast_files, weather_actuals_files)
     smart_meter_tss, weather_forecast_ts, weather_actuals_ts = create_timeseries_from_dataframes(sm, wf, wa,
                                                                                                  scale=True,
-                                                                                                 pickle_scalers=True)
+                                                                                                 pickled_scaler_folder=path)
 
     objective = create_objective(model_config, data=(smart_meter_tss, weather_forecast_ts, weather_actuals_ts))
 
@@ -137,7 +165,7 @@ if __name__ == "__main__":
                         help='path where model should be saved')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
 
     smd_files, wfd_files, wad_files = [], [], []
     if args.smart_meter_data:

@@ -4,11 +4,6 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from torch.nn.modules.loss import _Loss
-
-
-
-
 
 
 class CustomPLModule(pl.LightningModule):
@@ -50,6 +45,13 @@ class CustomLoss(nn.Module):
 
     def forward(self, output, target):
         real_target = target[-1]  # last element is the target element
-        logging.debug(f'Calculating loss, having these shapsies, {output.shape}, {real_target.shape}')
+        logging.debug(f'Calculating loss, having these shapes, {output.shape}, {real_target.shape}')
         loss = torch.mean((output - real_target) ** 2)
-        return loss
+        penalty_term_no_production_at_night = 0  # for PTUs that are between sunset and sunrise penalize negative predictions
+        penalty_term_morning_evening_peaks = 0  # for PTUs in the morning and evening peaks we want to penalize errors in any direction
+        penalty_term_air_co_on_humid_summer_days = 0  # for PTUs in summer months where global_radiation and humidity are high, we want to avoid underpredictions
+
+        return loss + \
+               penalty_term_no_production_at_night + \
+               penalty_term_morning_evening_peaks + \
+               penalty_term_air_co_on_humid_summer_days
