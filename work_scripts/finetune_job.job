@@ -16,18 +16,22 @@ cd $HOME/neuro-symbolic-demand-forecasting
 poetry install
 poetry shell
 
-# Activate your environment
-source activate dl2023
 # Check whether the GPU is available
 srun python -uc "import torch; print('GPU available?', torch.cuda.is_available())"
 
 #Copy input file to scratch
-cp $HOME/2023_06_cleaned_data.csv "$TMPDIR"
-cp $HOME/2023-06-amsterdam-actuals.csv "$TMPDIR"
-cp $HOME/2023_weather_data_06_run_summer.csv "$TMPDIR"
-cp $HOME/model_config.yaml "$TMPDIR"
+mkdir -p "$TMPDIR"/data
+cp $HOME/data/2023_05_cleaned_pv.csv "$TMPDIR"/data
+cp $HOME/data/2023_06_cleaned_pv.csv "$TMPDIR"/data
+cp $HOME/data/2023-04_to_08-amsterdam-actuals.csv "$TMPDIR"/data
+cp $HOME/data/2023_weather_data_06_run_summer_from_04_to_08.csv "$TMPDIR"/data
+cp $HOME/data/model_finetune_config.yaml "$TMPDIR"/data
 
-srun python -m src.neuro_symbolic_demand_forecasting.main_train -smd "$TMPDIR"/2023_06_cleaned_data.csv  -wad "$TMPDIR"/2023-06-amsterdam-actuals.csv -wfd "$TMPDIR"/2023_weather_data_06_run_summer.csv -md "$TMPDIR"/model_config.yaml
+srun python -m src.neuro_symbolic_demand_forecasting.main_finetune \
+        -smd "$TMPDIR"/data/2023_05_cleaned_pv.csv,data/2023_06_cleaned_pv.csv \
+        -wad "$TMPDIR"/data/2023-04_to_08-amsterdam-actuals.csv \
+        -wfd "$TMPDIR"/data/2023_weather_data_06_run_summer_from_04_to_08.csv \
+        -md "$TMPDIR"/data/model_finetune_config.yaml -sv $HOME/finetuning_baseline_tft
 
 # cp # move model to $HOME/models/ directory
 # run with sbatch training.job

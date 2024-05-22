@@ -3,24 +3,24 @@ weather_actuals_features: [ 'wind_speed', 'global_radiation', 'air_pressure', 'a
 
 model_class: 'TFT'
 run_with_validation: true
-gpu_enable: false
+gpu_enable: true
 run_learning_rate_finder: false
 
 # from "Application of Temporal Fusion Transformer for Day-Ahead PV Power Forecasting"
 #tft_config:
-  input_chunk_length: 672 # 7*24*4
-  output_chunk_length: 96 #1*24
-  hidden_size: 60
-  hidden_continuous_size: 30
-  num_attention_heads: 2
-  lstm_layers: 2
-  batch_size: 512
-  n_epochs: 80
-  dropout: 0.7
-  use_static_covariates: false
-  add_relative_index: false
-  optimizer_kwargs:
-    lr: 0.001
+#  input_chunk_length: 672 # 7*24*4
+#  output_chunk_length: 96 #1*24
+#  hidden_size: 60
+#  hidden_continuous_size: 30
+#  num_attention_heads: 2
+#  lstm_layers: 2
+#  batch_size: 512
+#  n_epochs: 80
+#  dropout: 0.7
+#  use_static_covariates: false
+#  add_relative_index: false
+#  optimizer_kwargs:
+#    lr: 0.001
 #  random_state: 42
 #  save_checkpoints: true
 #  loss_fn: "Custom" # else MSE or similar metrics

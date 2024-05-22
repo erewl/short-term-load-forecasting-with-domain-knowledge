@@ -34,13 +34,6 @@ def create_objective(model_config: dict, data: tuple):
 
 
 def create_tft_objective(_config: dict, data: tuple):
-    #
-    # _config = {}
-    # for i, f in tft_config.items():
-    #     if i == 'loss_fn' and f == 'Custom':
-    #         _config[i] = CustomLoss()
-    #     else:
-    #         _config[i] = f
     logging.info(_config)
 
     sms, wfts, wats = data
@@ -62,6 +55,9 @@ def create_tft_objective(_config: dict, data: tuple):
         lstm_layers = get_suggestion(trial.suggest_int, 'lstm_layers')
         batch_size = get_suggestion(trial.suggest_int, 'batch_size')
         dropout = get_suggestion(trial.suggest_float, 'dropout')
+
+        use_static_covariates = trial.suggest_categorical("use_static_covariates", [False, True])
+        add_relative_index = trial.suggest_categorical("add_relative_index", [False, True])
 
         # TODO could be reused in training too
         model_cls = TFTModel
@@ -87,6 +83,8 @@ def create_tft_objective(_config: dict, data: tuple):
             add_encoders=create_encoders(),
             dropout=dropout,
             loss_fn=loss_fn,
+            use_static_covariates=use_static_covariates,
+            add_relative_index=add_relative_index,
             pl_trainer_kwargs=pl_trainer_kwargs
         )
 
