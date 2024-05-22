@@ -2,6 +2,8 @@ import logging
 
 import argparse
 import os
+import pickle
+
 import torch.nn as nn
 import numpy as np
 import optuna
@@ -12,7 +14,6 @@ from darts.metrics import smape
 from darts.models import TFTModel
 from optuna.visualization import plot_param_importances, plot_contour, plot_optimization_history
 from optuna_integration.pytorch_lightning import PyTorchLightningPruningCallback
-from pytorch_lightning.callbacks import EarlyStopping
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
@@ -110,7 +111,7 @@ def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
             val_series=sms,
             val_past_covariates=wats,  # actuals
             val_future_covariates=wfts,  # forecasts
-            epochs=100,
+            epochs=50,
             trainer=pl.Trainer(),
             # max_samples_per_ts=MAX_SAMPLES_PER_TS,
             num_loader_workers=num_workers,
@@ -137,8 +138,8 @@ def main_finetune(smart_meter_files: list[str], weather_forecast_files: list[str
         model_config = yaml.safe_load(file)
 
     # Creating folder to safe scalers and model 'YYYYMMDD_HHMM'
-    folder_name = dt.datetime.now().strftime('%Y%m%d_%H%M')
-    path = os.path.join('.', f'{folder_name}_{save_model_path}')
+    folder_name = dt.datetime.now().strftime('%Y%m%d_%H%M%S')
+    path = os.path.join(save_model_path, folder_name)
     os.makedirs(path)
     logging.info(f"Saving everything related to this model training run at: {path}")
 
@@ -150,13 +151,15 @@ def main_finetune(smart_meter_files: list[str], weather_forecast_files: list[str
     objective = create_objective(model_config, data=(smart_meter_tss, weather_forecast_ts, weather_actuals_ts))
 
     study = optuna.create_study(direction="minimize")
-    study.optimize(objective, timeout=7200, callbacks=[print_callback])
+    # study.optimize(objective, timeout=7200, callbacks=[print_callback])
     # to limit the number of trials instead:
-    # study.optimize(objective, n_trials=100, callbacks=[print_callback])
+    study.optimize(objective, n_trials=100, callbacks=[print_callback])
 
     print(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
+    with open(f'{path}/study.pkl', 'wb') as f:
+        pickle.dump(study, f)
 
-    # only run this locally
+# only run this locally
     # plot_optimization_history(study)
     # plot_contour(study, params=["lr", "num_filters"])
     # plot_param_importances(study)
