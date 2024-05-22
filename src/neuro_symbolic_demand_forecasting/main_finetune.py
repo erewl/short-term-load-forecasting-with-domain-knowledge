@@ -97,6 +97,7 @@ def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
             loss_fn=loss_fn,
             use_static_covariates=use_static_covariates,
             add_relative_index=add_relative_index,
+            optimizer_kwargs=_config['optimizer_kwargs'],
             pl_trainer_kwargs=pl_trainer_kwargs
         )
 

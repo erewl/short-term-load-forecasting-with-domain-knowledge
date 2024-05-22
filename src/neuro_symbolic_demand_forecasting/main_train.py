@@ -87,6 +87,7 @@ def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]
 
     # detect if a GPU is available
     if torch.cuda.is_available() and _model_config['gpu_enable']:
+        torch.set_float32_matmul_precision('high')
         pl_trainer_kwargs = {
             "accelerator": "gpu",
             "gpus": -1,
