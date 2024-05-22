@@ -28,12 +28,12 @@ def print_callback(study, trial):
 def create_objective(model_config: dict, data: tuple):
     match model_config['model_class']:
         case 'TFT':
-            return create_tft_objective(model_config['tft_config'], data)
+            return create_tft_objective(model_config['tft_config'], model_config, data)
         case default:
             raise Exception(f'No config implement yet for model of type: {default}')
 
 
-def create_tft_objective(_config: dict, data: tuple):
+def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
     logging.info(_config)
 
     sms, wfts, wats = data
@@ -45,8 +45,8 @@ def create_tft_objective(_config: dict, data: tuple):
                               high=_config[name]['end'],
                               step=_config[name]['increment'])
 
-        pl_trainer_kwargs, num_workers = get_trainer_kwargs(_config, [
-            PyTorchLightningPruningCallback(trial, monitor="val_loss")])
+        pruning_callback: list = [PyTorchLightningPruningCallback(trial, monitor="val_loss")]
+        pl_trainer_kwargs, num_workers = get_trainer_kwargs(_base_config, callbacks=pruning_callback)
 
         input_chunk_length = get_suggestion(trial.suggest_int, 'input_chunk_length')
         hidden_size = get_suggestion(trial.suggest_int, 'hidden_size')

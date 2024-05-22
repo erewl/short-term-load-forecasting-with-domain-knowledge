@@ -80,10 +80,10 @@ def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSerie
 
 def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]:
     early_stopper = EarlyStopping("val_loss", min_delta=0.001, patience=3, verbose=True)
-    if callbacks is None or len(callbacks) == 0:
+    if len(callbacks) == 0:
         callbacks = [early_stopper]
     else:
-        callbacks = callbacks.append(early_stopper)
+        callbacks.append(early_stopper)
 
     # detect if a GPU is available
     if torch.cuda.is_available() and _model_config['gpu_enable']:
