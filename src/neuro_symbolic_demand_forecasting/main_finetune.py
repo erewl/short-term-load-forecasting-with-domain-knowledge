@@ -151,9 +151,10 @@ def main_finetune(smart_meter_files: list[str], weather_forecast_files: list[str
     objective = create_objective(model_config, data=(smart_meter_tss, weather_forecast_ts, weather_actuals_ts))
 
     study = optuna.create_study(direction="minimize")
+
     # study.optimize(objective, timeout=7200, callbacks=[print_callback])
     # to limit the number of trials instead:
-    study.optimize(objective, n_trials=100, callbacks=[print_callback])
+    study.optimize(objective, n_jobs=-1, n_trials=20, gc_after_trial=True, callbacks=[print_callback])
 
     print(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
     with open(f'{path}/study.pkl', 'wb') as f:
