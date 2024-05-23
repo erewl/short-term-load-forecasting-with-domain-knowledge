@@ -111,7 +111,7 @@ def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
             val_series=sms,
             val_past_covariates=wats,  # actuals
             val_future_covariates=wfts,  # forecasts
-            epochs=50,
+            epochs=_config['n_epochs'],
             trainer=pl.Trainer(),
             # max_samples_per_ts=MAX_SAMPLES_PER_TS,
             num_loader_workers=num_workers,

@@ -32,16 +32,16 @@ class SnowflakeDao:
 
         print("Connected to snowflake instance!")
 
-    def fetch_list(self, query: str) -> pl.DataFrame:
+    def fetch_list(self, query: str) -> pd.DataFrame:
         with self.engine.connect() as conn:
             print("Executing query")
             result = conn.execute(query)
             print("Fetching all")
-            fetched_result= result.all()
+            fetched_result= result.fetchall()
             print("Writing data to df")
             df = pd.DataFrame(fetched_result)
-            df.columns = result.keys()
-            df = pl.from_pandas(df)
+            # df.columns = result.keys()
+            # df = pl.from_pandas(df)
             return df
 
     def fetch_one(self, query: str) -> pd.DataFrame:
