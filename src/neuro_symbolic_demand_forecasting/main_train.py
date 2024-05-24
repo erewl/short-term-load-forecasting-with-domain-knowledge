@@ -123,7 +123,7 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                 logging.info("Using LSTM with Custom Module for custom Loss")
                 return ExtendedRNNModel(
                     model="LSTM",
-                    loss_fn=CustomLoss(LSTM_MAPPING),  # custom loss here
+                    loss_fn=CustomLoss(LSTM_MAPPING, thresholds={}),  # custom loss here
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
@@ -135,8 +135,9 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                     model="LSTM",
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
+                    loss_fn=nn.MSELoss(),
                     pl_trainer_kwargs=pl_trainer_kwargs,
-                    **{k: v for k, v in lstm_config.items() if k not in ['optimizer_kwargs']}
+                    **{k: v for k, v in lstm_config.items() if k not in ['optimizer_kwargs', 'loss_fn']}
                 )
 
 

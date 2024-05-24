@@ -25,9 +25,11 @@ def create_encoders(model_type: str) -> dict:
     else:
         encoders = {
             'datetime_attribute': {'future': ['dayofweek'],
+                                   'past': ['dayofweek'],
                                    },
             'custom': {
-                'future': [encode_ptu, part_of_day_encoder.encode]
+                'future': [encode_ptu, part_of_day_encoder.encode],
+                'past': [encode_ptu, part_of_day_encoder.encode],
             },
             # 'position': {'past': ['relative'], 'future': ['relative']},
             # 'transformer': Scaler(),
