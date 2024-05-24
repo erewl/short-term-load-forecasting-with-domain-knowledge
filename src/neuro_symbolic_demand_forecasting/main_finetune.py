@@ -17,8 +17,8 @@ from optuna_integration.pytorch_lightning import PyTorchLightningPruningCallback
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
-from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes, \
-    create_encoders, get_trainer_kwargs
+from neuro_symbolic_demand_forecasting.encoders.encoders import create_encoders
+from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes, get_trainer_kwargs
 
 
 def print_callback(study, trial):
@@ -93,7 +93,7 @@ def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
             num_attention_heads=num_attention_heads,
             lstm_layers=lstm_layers,
             batch_size=batch_size,
-            add_encoders=create_encoders(),
+            add_encoders=create_encoders('TFT'),
             dropout=dropout,
             loss_fn=loss_fn,
             use_static_covariates=use_static_covariates,
