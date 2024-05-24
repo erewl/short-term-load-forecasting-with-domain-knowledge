@@ -3,17 +3,14 @@ import logging
 import os
 import pickle
 from typing import Tuple, List, Optional
-
+import torch.nn as nn
 import numpy as np
-import pytz
-from astral.sun import sun
-from astral import LocationInfo
 import datetime as dt
 import pandas as pd
 import torch
 import yaml
 from darts import TimeSeries
-from darts.models import RNNModel, TFTModel
+from darts.models import RNNModel, TFTModel, RandomForest
 from darts.dataprocessing.transformers import Scaler
 from darts.metrics import mape, smape, mae
 from darts.models.forecasting.torch_forecasting_model import TorchForecastingModel
@@ -25,8 +22,7 @@ from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
 
 from sklearn.preprocessing import MinMaxScaler
 
-# timezones
-AMS_TZ = pytz.timezone('Europe/Amsterdam')
+from neuro_symbolic_demand_forecasting.encoders.encoders import AMS_TZ, create_encoders, LSTM_MAPPING
 
 
 def load_csvs(_config: dict, _smart_meter_files: list[str], _weather_forecast_files: list[str],
@@ -50,24 +46,6 @@ def load_csvs(_config: dict, _smart_meter_files: list[str], _weather_forecast_fi
     wa = wa.resample('15min').mean()
 
     return sms, wf, wa
-
-
-def encode_ptu(idx):
-    total_minutes = idx.hour * 60 + idx.minute
-    ptu = total_minutes // 15
-    return ptu + 1
-
-
-def create_encoders() -> dict:
-    encoders = {
-        'cyclic': {'future': ['month', 'day']},
-        'datetime_attribute': {'future': ['dayofweek'], 'past': ['dayofweek']},
-        'custom': {'past': [encode_ptu], 'future': [encode_ptu]},
-        # 'position': {'past': ['relative'], 'future': ['relative']},
-        'transformer': Scaler(),
-        'tz': 'Europe/Amsterdam'
-    }
-    return encoders
 
 
 def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSeries:
@@ -101,15 +79,15 @@ def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]
     return pl_trainer_kwargs, num_workers
 
 
-def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=None) -> TorchForecastingModel:
+def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs=None) -> TorchForecastingModel:
     # throughout training we'll monitor the validation loss for early stopping
-    pl_trainer_kwargs = get_trainer_kwargs(model_config, callbacks)
-    encoders = create_encoders()
+    pl_trainer_kwargs, num_workers = get_trainer_kwargs(_model_config, callbacks)
+    encoders = create_encoders(_model_config['model_class'])
 
-    match model_config['model_class']:
+    match _model_config['model_class']:
         case "TFT":
-            tft_config: dict = model_config['tft_config']
-            if not model_config['run_learning_rate_finder'] and tft_config.get('optimizer_kwargs') is not None:
+            tft_config: dict = _model_config['tft_config']
+            if not _model_config['run_learning_rate_finder'] and tft_config.get('optimizer_kwargs') is not None:
                 optimizer_kwargs = tft_config['optimizer_kwargs']
             logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {tft_config}")
             if tft_config['loss_fn'] and tft_config['loss_fn'] == 'Custom':
@@ -117,7 +95,7 @@ def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=
                 return ExtendedTFTModel(
                     input_chunk_length=tft_config['input_chunk_length'],
                     output_chunk_length=tft_config['output_chunk_length'],
-                    loss_fn=CustomLoss(),  # custom loss here
+                    loss_fn=CustomLoss({}),  # custom loss here
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
@@ -125,26 +103,29 @@ def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=
                        k not in ['input_chunk_length', 'output_chunk_length', 'loss_fn', 'optimizer_kwargs']}
                 )
             else:
+                logging.info("Using TFTModel with normal loss")
                 return TFTModel(
                     input_chunk_length=tft_config['input_chunk_length'],
                     output_chunk_length=tft_config['output_chunk_length'],
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
+                    loss_fn=nn.MSELoss(),
                     pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in tft_config.items() if
-                       k not in ['input_chunk_length', 'output_chunk_length', 'optimizer_kwargs']}
+                       k not in ['input_chunk_length', 'output_chunk_length', 'optimizer_kwargs', 'loss_fn']}
                 )
         case "LSTM":
-            lstm_config: dict = model_config['lstm_config']
-            if not model_config['run_learning_rate_finder'] and lstm_config.get('optimizer_kwargs') is not None:
+            lstm_config: dict = _model_config['lstm_config']
+            if not _model_config['run_learning_rate_finder'] and lstm_config.get('optimizer_kwargs') is not None:
                 optimizer_kwargs = lstm_config['optimizer_kwargs']
             logging.info(f"Initiating the LSTM with these arguments: \n {lstm_config}")
             if lstm_config.get('loss_fn') == 'Custom':
-                logging.info("Using TFTModel with Custom Module for custom Loss")
+                logging.info("Using LSTM with Custom Module for custom Loss")
                 return ExtendedRNNModel(
                     model="LSTM",
-                    loss_fn=CustomLoss(),  # custom loss here
+                    loss_fn=CustomLoss(LSTM_MAPPING),  # custom loss here
                     optimizer_kwargs=optimizer_kwargs,
+                    add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in lstm_config.items() if
                        k not in ['loss_fn', 'optimizer_kwargs']}
@@ -153,27 +134,10 @@ def _init_model(model_config: dict, callbacks: List[Callback], optimizer_kwargs=
                 return RNNModel(
                     model="LSTM",
                     optimizer_kwargs=optimizer_kwargs,
+                    add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in lstm_config.items() if k not in ['optimizer_kwargs']}
                 )
-
-
-def get_part_of_day(s, _city: LocationInfo):
-    i = s.name
-    sun_info = sun(_city.observer, date=i.date())
-    sunrise = sun_info['sunrise'].astimezone(AMS_TZ).time()
-    sunset = sun_info['sunset'].astimezone(AMS_TZ).time()
-
-    if i.time() < sunrise or i.time() > sunset:
-        return 'Night'
-    elif sunrise <= i.time() < dt.time(9, 0, 0):
-        return 'Morning'
-    elif dt.time(9, 0, 0) <= i.time() < dt.time(13, 0, 0):
-        return 'Midday'
-    elif dt.time(13, 0, 0) <= i.time() < dt.time(17, 0, 0):
-        return 'Afternoon'
-    else:
-        return 'Evening'
 
 
 def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, wa: pd.DataFrame, scale: bool,
@@ -188,13 +152,24 @@ def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, 
     weather_forecast_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
     weather_actuals_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
     pv_smart_meter_scaler = Scaler(MinMaxScaler(feature_range=(-1, 1)))
-    non_pv_smart_meter_scaler = Scaler(MinMaxScaler(feature_range=(-1, 1)))
+    non_pv_smart_meter_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
 
     if scale:
         logging.info("Scaling ")
-        weather_forecast_ts = weather_forecast_scaler.fit_transform(weather_forecast_ts)
-        weather_actuals_ts = weather_actuals_scaler.fit_transform(weather_actuals_ts)
-        smart_meter_tss = pv_smart_meter_scaler.fit_transform(smart_meter_tss)
+        weather_forecast_scaler = weather_forecast_scaler.fit(weather_forecast_ts)
+        weather_forecast_ts = weather_forecast_scaler.transform(weather_forecast_ts)
+
+        weather_actuals_scaler = weather_actuals_scaler.fit(weather_actuals_ts)
+        weather_actuals_ts = weather_actuals_scaler.transform(weather_actuals_ts)
+
+        # TODO also fit the non_pv_scaler
+        non_pv_sms = [s for s in smart_meter_tss if any(s.min(axis=0) >= 0)]
+        pv_sms = [s for s in smart_meter_tss if any(s.min(axis=0) < 0)]
+
+        pv_sms = pv_smart_meter_scaler.fit_transform(pv_sms)
+        non_pv_sms = non_pv_smart_meter_scaler.fit_transform(non_pv_sms)
+        smart_meter_tss = pv_sms + non_pv_sms
+
         if pickled_scaler_folder is not None:
             logging.info("Pickling the scalers for later use here.")
             with open(f'{pickled_scaler_folder}/scalers.pkl', 'wb') as f:
@@ -215,14 +190,9 @@ def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, 
 
 
 def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], weather_actuals_files: list[str],
-               model_config_path: str, save_model_path: str):
+               model_config: dict, save_model_path: str):
     # load_dotenv()
     logging.info('Starting training!')
-    with open(model_config_path, 'r') as file:
-        logging.info(f'Loading config from {model_config_path}')
-        model_config = yaml.safe_load(file)
-
-    city = LocationInfo("Amsterdam", "Netherlands", "Europe/Amsterdam")
 
     # Creating folder to safe scalers and model 'YYYYMMDD_HHMM'
     folder_name = dt.datetime.now().strftime('%Y%m%d_%H%M')
@@ -242,6 +212,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
 
     # training
     model = _init_model(model_config, [], {})
+
     logging.info("Initialized model, beginning with fitting...")
 
     if model_config['run_with_validation']:
@@ -249,6 +220,9 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
 
         # TFT
         if model.supports_past_covariates and model.supports_future_covariates:
+            # TODO implement static covariates (based on non_pv vs pv)
+            print(model.uses_static_covariates)
+
             if model_config['run_learning_rate_finder']:
                 results = model.lr_find(series=train_tss,
                                         past_covariates=weather_actuals_ts,
@@ -274,6 +248,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
 
         # LSTM
         if model.supports_future_covariates:
+            logging.info("Initializing model with future_covariates")
             if model_config['run_learning_rate_finder']:
                 results = model.lr_find(series=train_tss,
                                         val_series=val_tss,
@@ -285,11 +260,11 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 model = _init_model(model_config, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})
+
             model.fit(
                 train_tss,
                 future_covariates=weather_forecast_ts,
                 val_series=val_tss,
-                # val_past_covariates=weather_actuals_ts, # doesnt support past covariates
                 val_future_covariates=weather_forecast_ts,
                 verbose=True,
                 # trainer=pl_trainer_kwargs # would be nice to have early stopping here
@@ -338,9 +313,9 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     pred = model.predict(n=96, series=forecast,
                          future_covariates=weather_forecast_ts)
 
-    logging.info("MAPE = {:.2f}%".format(mape(actual, pred)))
-    logging.info("SMAPE = {:.2f}%".format(smape(actual, pred)))
-    logging.info("MAE = {:.2f}%".format(mae(actual, pred)))
+    # logging.info("MAPE = {:.2f}%".format(mape(actual, pred)))
+    # logging.info("SMAPE = {:.2f}%".format(smape(actual, pred)))
+    # logging.info("MAE = {:.2f}%".format(mae(actual, pred)))
 
     logging.info(f"Saving model at {path}/trained_model.pkl")
     model.save(f'{path}/train_model.pkl')
@@ -361,7 +336,15 @@ if __name__ == "__main__":
                         help='path where model should be saved')
     args = parser.parse_args()
 
+    with open(args.model_configuration, 'r') as file:
+        logging.info(f'Loading config from {args.model_configuration}')
+        model_config = yaml.safe_load(file)
+        print(model_config)
+
     logging.basicConfig(level=logging.DEBUG)
+    if model_config['logging_level'] != "DEBUG":
+        logging.basicConfig(level=logging.INFO)
+        logging.info("Initialized logger in INFO mode")
 
     smd_files, wfd_files, wad_files = [], [], []
     if args.smart_meter_data:
@@ -371,4 +354,6 @@ if __name__ == "__main__":
     if args.weather_actuals_data:
         wad_files = [file.strip() for file in ','.join(args.weather_actuals_data).split(',')]
 
-    main_train(smd_files, wfd_files, wad_files, args.model_configuration, args.save_model_as)
+    main_train(smd_files, wfd_files, wad_files, model_config, args.save_model_as)
+
+# I am using pytorch to train a neural network, when i train the data on one dataset i get reasonable loss terms, but with another dataset i get nan.0 values what could the cause be
