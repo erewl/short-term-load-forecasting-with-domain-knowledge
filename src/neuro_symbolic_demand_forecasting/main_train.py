@@ -356,5 +356,3 @@ if __name__ == "__main__":
         wad_files = [file.strip() for file in ','.join(args.weather_actuals_data).split(',')]
 
     main_train(smd_files, wfd_files, wad_files, model_config, args.save_model_as)
-
-# I am using pytorch to train a neural network, when i train the data on one dataset i get reasonable loss terms, but with another dataset i get nan.0 values what could the cause be
