@@ -10,19 +10,19 @@ import pandas as pd
 import torch
 import yaml
 from darts import TimeSeries
-from darts.models import RNNModel, TFTModel, RandomForest
+from darts.models import RNNModel, TFTModel, RegressionModel
 from darts.dataprocessing.transformers import Scaler
-from darts.metrics import mape, smape, mae
 from darts.models.forecasting.torch_forecasting_model import TorchForecastingModel
 from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import EarlyStopping
+from sklearn.linear_model import LinearRegression
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel, ExtendedRNNModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
 
 from sklearn.preprocessing import MinMaxScaler
 
-from neuro_symbolic_demand_forecasting.encoders.encoders import AMS_TZ, create_encoders, LSTM_MAPPING
+from neuro_symbolic_demand_forecasting.encoders.encoders import AMS_TZ, create_encoders, LSTM_MAPPING, TFT_MAPPING
 
 
 def load_csvs(_config: dict, _smart_meter_files: list[str], _weather_forecast_files: list[str],
@@ -79,7 +79,7 @@ def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]
     return pl_trainer_kwargs, num_workers
 
 
-def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs=None) -> TorchForecastingModel:
+def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs=None):
     # throughout training we'll monitor the validation loss for early stopping
     pl_trainer_kwargs, num_workers = get_trainer_kwargs(_model_config, callbacks)
     encoders = create_encoders(_model_config['model_class'])
@@ -95,8 +95,8 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                 return ExtendedTFTModel(
                     input_chunk_length=tft_config['input_chunk_length'],
                     output_chunk_length=tft_config['output_chunk_length'],
-                    loss_fn=CustomLoss({}),  # custom loss here
-                    optimizer_kwargs=optimizer_kwargs,
+                    loss_fn=CustomLoss(TFT_MAPPING, {}),  # custom loss here
+                    # optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in tft_config.items() if
@@ -138,6 +138,7 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                     loss_fn=nn.MSELoss(),
                     pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in lstm_config.items() if k not in ['optimizer_kwargs', 'loss_fn']}
+                )
                 )
 
 
@@ -218,11 +219,13 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
 
     if model_config['run_with_validation']:
         train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in smart_meter_tss])
+        train_tss = list(train_tss)
+        val_tss = list(val_tss)
 
         # TFT
         if model.supports_past_covariates and model.supports_future_covariates:
             # TODO implement static covariates (based on non_pv vs pv)
-            print(model.uses_static_covariates)
+            logging.info("Using static_covariates: {model.uses_static_covariates}")
 
             if model_config['run_learning_rate_finder']:
                 results = model.lr_find(series=train_tss,
@@ -236,15 +239,15 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 model = _init_model(model_config, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
+            print(len(train_tss), len(weather_forecast_ts), len(weather_actuals_ts))
             model.fit(
-                train_tss,
+                series=train_tss,
                 past_covariates=weather_actuals_ts,
                 future_covariates=weather_forecast_ts,
                 val_series=val_tss,
                 val_past_covariates=weather_actuals_ts,
                 val_future_covariates=weather_forecast_ts,
                 verbose=True,
-                # trainer=pl_trainer_kwargs # would be nice to have early stopping here
             )
 
         # LSTM
@@ -288,7 +291,6 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 past_covariates=weather_actuals_ts,
                 future_covariates=weather_forecast_ts,
                 verbose=True,
-                # trainer=pl_trainer_kwargs # would be nice to have early stopping here
             )
         # LSTM without validation
         if model.supports_future_covariates:
@@ -303,7 +305,6 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 smart_meter_tss,
                 future_covariates=weather_forecast_ts,
                 verbose=True,
-                # trainer=pl_trainer_kwargs # would be nice to have early stopping here
             )
         else:
             raise Exception(f'Training for other models not implemented yet')
@@ -337,15 +338,16 @@ if __name__ == "__main__":
                         help='path where model should be saved')
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.DEBUG)
+
     with open(args.model_configuration, 'r') as file:
         logging.info(f'Loading config from {args.model_configuration}')
         model_config = yaml.safe_load(file)
         print(model_config)
 
-    logging.basicConfig(level=logging.DEBUG)
-    if model_config['logging_level'] != "DEBUG":
-        logging.basicConfig(level=logging.INFO)
-        logging.info("Initialized logger in INFO mode")
+    # if model_config['logging_level'] != "DEBUG":
+    #     logging.basicConfig(level=logging.INFO)
+    #     logging.info("Initialized logger in INFO mode")
 
     smd_files, wfd_files, wad_files = [], [], []
     if args.smart_meter_data:

@@ -17,12 +17,15 @@ def create_encoders(model_type: str) -> dict:
             # 'cyclic': {'future': ['month', 'day']},
             'datetime_attribute': {'future': ['dayofweek'],
                                    'past': ['dayofweek']},
-            'custom': {'past': [encode_ptu], 'future': [part_of_day_encoder.encode]},
+            'custom': {
+                # 'past': [encode_ptu],
+                'future': [part_of_day_encoder.encode]
+            },
             # 'position': {'past': ['relative'], 'future': ['relative']},
             # 'transformer': Scaler(),
             'tz': 'Europe/Amsterdam'
         }
-    else:
+    else:  # LSTM
         encoders = {
             'datetime_attribute': {'future': ['dayofweek'],
                                    'past': ['dayofweek'],
@@ -37,6 +40,35 @@ def create_encoders(model_type: str) -> dict:
         }
     return encoders
 
+
+TFT_MAPPING = {
+    "smart_meter": [0, 0],
+    # past future_covariates
+    "past_wind_speed": [1, 0],
+    "past_global_radiation": [1, 1],
+    "past_air_pressure": [1, 2],
+    "past_air_temperature": [1, 3],
+    "past_relative_humidity": [1, 4],
+    "past_day_of_week": [1, 5],
+    # "past_ptu": [1, 6],
+    # "past_part_of_day": [1, 7],
+    # past future_covariates
+    "past_future_wind_speed": [2, 0],
+    "past_future_global_radiation": [2, 1],
+    "past_future_air_pressure": [2, 2],
+    "past_future_air_temperature": [2, 3],
+    "past_future_relative_humidity": [2, 4],
+    "past_future_day_of_week": [2, 5],
+    "past_future_part_of_day": [2, 6],
+    # future covariates
+    "future_wind_speed": [3, 0],
+    "future_global_radiation": [3, 1],
+    "future_air_pressure": [3, 2],
+    "future_air_temperature": [3, 3],
+    "future_relative_humidity": [3, 4],
+    "future_day_of_week": [3, 5],
+    "future_part_of_day": [3, 6],
+}
 
 LSTM_MAPPING = {
     "smart_meter": [0, 0],

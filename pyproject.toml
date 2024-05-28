@@ -32,6 +32,8 @@ lightning = "^2.2.4"
 astral = "^3.2"
 optuna = "^3.6.1"
 optuna-integration = "^3.6.0"
+torchvision = "0.17.2"
+tensorboard = "^2.16.2"
 
 
 [tool.poetry.group.dev.dependencies]
