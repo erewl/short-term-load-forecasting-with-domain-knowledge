@@ -68,6 +68,8 @@ TFT_MAPPING = {
     "future_relative_humidity": [3, 4],
     "future_day_of_week": [3, 5],
     "future_part_of_day": [3, 6],
+    # static covariates
+    "static_covariates": [4, 0]
 }
 
 LSTM_MAPPING = {
