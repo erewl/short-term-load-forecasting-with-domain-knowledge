@@ -142,7 +142,8 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                 )
 
 
-def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, wa: pd.DataFrame, scale: bool,
+def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, wa: pd.DataFrame,
+                                      add_static_covariates: bool, scale: bool,
                                       pickled_scaler_folder: Optional[str] = None) -> Tuple[
     List[TimeSeries], List[TimeSeries], List[TimeSeries]]:
     # transforming to TimeSeries, using float32 is a bit more efficient than float64
@@ -164,9 +165,15 @@ def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, 
         weather_actuals_scaler = weather_actuals_scaler.fit(weather_actuals_ts)
         weather_actuals_ts = weather_actuals_scaler.transform(weather_actuals_ts)
 
-        # TODO also fit the non_pv_scaler
         non_pv_sms = [s for s in smart_meter_tss if any(s.min(axis=0) >= 0)]
         pv_sms = [s for s in smart_meter_tss if any(s.min(axis=0) < 0)]
+
+        if add_static_covariates:
+            pv_static_covariate = pd.DataFrame(data={"is_pv": [1]})
+            no_pv_static_covariate = pd.DataFrame(data={"is_pv": [0]})
+
+            pv_sms = [p.with_static_covariates(no_pv_static_covariate) for p in pv_sms]
+            non_pv_sms = [p.with_static_covariates(no_pv_static_covariate) for p in non_pv_sms]
 
         pv_sms = pv_smart_meter_scaler.fit_transform(pv_sms)
         non_pv_sms = non_pv_smart_meter_scaler.fit_transform(non_pv_sms)
@@ -206,6 +213,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     sm, wf, wa = load_csvs(model_config, smart_meter_files, weather_forecast_files, weather_actuals_files)
     smart_meter_tss, weather_forecast_ts, weather_actuals_ts = create_timeseries_from_dataframes(sm, wf, wa,
                                                                                                  scale=True,
+                                                                                                 add_static_covariates=True,
                                                                                                  pickled_scaler_folder=path)
     logging.info("Dtypes of SM, WF, WA")
     logging.info(smart_meter_tss[0].values().dtype)
@@ -239,7 +247,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 model = _init_model(model_config, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
-            print(len(train_tss), len(weather_forecast_ts), len(weather_actuals_ts))
+
             model.fit(
                 series=train_tss,
                 past_covariates=weather_actuals_ts,
@@ -344,10 +352,6 @@ if __name__ == "__main__":
         logging.info(f'Loading config from {args.model_configuration}')
         model_config = yaml.safe_load(file)
         print(model_config)
-
-    # if model_config['logging_level'] != "DEBUG":
-    #     logging.basicConfig(level=logging.INFO)
-    #     logging.info("Initialized logger in INFO mode")
 
     smd_files, wfd_files, wad_files = [], [], []
     if args.smart_meter_data:
