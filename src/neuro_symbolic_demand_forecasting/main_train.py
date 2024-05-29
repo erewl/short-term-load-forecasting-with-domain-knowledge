@@ -139,7 +139,6 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                     pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in lstm_config.items() if k not in ['optimizer_kwargs', 'loss_fn']}
                 )
-                )
 
 
 def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, wa: pd.DataFrame,
@@ -157,6 +156,9 @@ def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, 
     pv_smart_meter_scaler = Scaler(MinMaxScaler(feature_range=(-1, 1)))
     non_pv_smart_meter_scaler = Scaler(MinMaxScaler(feature_range=(0, 1)))
 
+    non_pv_sms = [s for s in smart_meter_tss if any(s.min(axis=0) >= 0)]
+    pv_sms = [s for s in smart_meter_tss if any(s.min(axis=0) < 0)]
+
     if scale:
         logging.info("Scaling ")
         weather_forecast_scaler = weather_forecast_scaler.fit(weather_forecast_ts)
@@ -164,16 +166,6 @@ def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, 
 
         weather_actuals_scaler = weather_actuals_scaler.fit(weather_actuals_ts)
         weather_actuals_ts = weather_actuals_scaler.transform(weather_actuals_ts)
-
-        non_pv_sms = [s for s in smart_meter_tss if any(s.min(axis=0) >= 0)]
-        pv_sms = [s for s in smart_meter_tss if any(s.min(axis=0) < 0)]
-
-        if add_static_covariates:
-            pv_static_covariate = pd.DataFrame(data={"is_pv": [1]})
-            no_pv_static_covariate = pd.DataFrame(data={"is_pv": [0]})
-
-            pv_sms = [p.with_static_covariates(no_pv_static_covariate) for p in pv_sms]
-            non_pv_sms = [p.with_static_covariates(no_pv_static_covariate) for p in non_pv_sms]
 
         pv_sms = pv_smart_meter_scaler.fit_transform(pv_sms)
         non_pv_sms = non_pv_smart_meter_scaler.fit_transform(non_pv_sms)
@@ -187,6 +179,14 @@ def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, 
                 pickle.dump(pv_smart_meter_scaler, f)
                 pickle.dump(weather_actuals_scaler, f)
                 pickle.dump(weather_forecast_scaler, f)
+
+    if add_static_covariates:
+        pv_static_covariate = pd.DataFrame(data={"is_pv": [1]})
+        no_pv_static_covariate = pd.DataFrame(data={"is_pv": [0]})
+
+        pv_sms = [p.with_static_covariates(pv_static_covariate) for p in pv_sms]
+        non_pv_sms = [p.with_static_covariates(no_pv_static_covariate) for p in non_pv_sms]
+        smart_meter_tss = pv_sms + non_pv_sms
 
     # matching the length of covariates with length of timeseries array
     weather_forecast_tss = [weather_forecast_ts for _ in sm]
@@ -226,14 +226,19 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     logging.info("Initialized model, beginning with fitting...")
 
     if model_config['run_with_validation']:
-        train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in smart_meter_tss])
+        input_chunk_length = model.input_chunk_length
+        output_chunk_length = model.output_chunk_length
+        validation_set_size = input_chunk_length + output_chunk_length
+        train_tss, val_tss = zip(*[sm.split_after(len(sm) - validation_set_size - 1) for sm in smart_meter_tss])
         train_tss = list(train_tss)
         val_tss = list(val_tss)
 
+        logging.info(f"Training with {[(t.time_index.min(), t.time_index.max()) for t in train_tss]}")
+        logging.info(f"Validating with {[(t.time_index.min(), t.time_index.max()) for t in val_tss]}")
+
         # TFT
         if model.supports_past_covariates and model.supports_future_covariates:
-            # TODO implement static covariates (based on non_pv vs pv)
-            logging.info("Using static_covariates: {model.uses_static_covariates}")
+            logging.info(f"Using static_covariates: {model.uses_static_covariates}")
 
             if model_config['run_learning_rate_finder']:
                 results = model.lr_find(series=train_tss,
@@ -257,9 +262,8 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 val_future_covariates=weather_forecast_ts,
                 verbose=True,
             )
-
         # LSTM
-        if model.supports_future_covariates:
+        elif model.supports_future_covariates:
             logging.info("Initializing model with future_covariates")
             if model_config['run_learning_rate_finder']:
                 results = model.lr_find(series=train_tss,
@@ -318,10 +322,6 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
             raise Exception(f'Training for other models not implemented yet')
 
     # validate
-    forecast, actual = smart_meter_tss[0][:-96], smart_meter_tss[0][-96:]
-
-    pred = model.predict(n=96, series=forecast,
-                         future_covariates=weather_forecast_ts)
 
     # logging.info("MAPE = {:.2f}%".format(mape(actual, pred)))
     # logging.info("SMAPE = {:.2f}%".format(smape(actual, pred)))
