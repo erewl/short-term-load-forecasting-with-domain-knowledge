@@ -69,7 +69,6 @@ def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]
         pl_trainer_kwargs = {
             "accelerator": "gpu",
             "devices": [0],
-            "auto_select_gpus": True,
             "callbacks": callbacks,
         }
         num_workers = 4
