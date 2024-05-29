@@ -93,12 +93,12 @@ class CustomLoss(nn.Module):
             # self.print_debugs(target)
             # no negative predictions at night
             penalty_term_no_production_at_night = self._get_loss_for_night(output, target)
-            # no negative predictions for non_pv datasets!
+            # no negative predictions for non_pv timeseries
             penalty_non_pv_negative_predictions = self._get_loss_for_non_pv(output, target)
 
-            # humid_summer_days and air co (need to define thresholds
+            # humid_summer_days and air co (need to define thresholds, since we are working with scaled values)
 
-        logging.info(f"{loss} + {penalty_term_no_production_at_night} + {penalty_non_pv_negative_predictions}")
+        logging.debug(f"Lossterms: {loss} + {penalty_term_no_production_at_night} + {penalty_non_pv_negative_predictions}")
         return loss + \
                pan_alpha * penalty_term_no_production_at_night + \
                np_alpha * penalty_non_pv_negative_predictions + \
