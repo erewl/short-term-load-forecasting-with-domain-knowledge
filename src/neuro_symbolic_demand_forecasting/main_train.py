@@ -68,7 +68,7 @@ def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]
         torch.set_float32_matmul_precision('high')
         pl_trainer_kwargs = {
             "accelerator": "gpu",
-            "gpus": -1,
+            "devices": [0],
             "auto_select_gpus": True,
             "callbacks": callbacks,
         }
@@ -96,7 +96,7 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                     input_chunk_length=tft_config['input_chunk_length'],
                     output_chunk_length=tft_config['output_chunk_length'],
                     loss_fn=CustomLoss(TFT_MAPPING, {}),  # custom loss here
-                    # optimizer_kwargs=optimizer_kwargs,
+                    optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in tft_config.items() if
@@ -352,7 +352,7 @@ if __name__ == "__main__":
                         help='path where model should be saved')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     with open(args.model_configuration, 'r') as file:
         logging.info(f'Loading config from {args.model_configuration}')
