@@ -204,10 +204,16 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
     logging.info('Starting training!')
 
     # Creating folder to safe scalers and model 'YYYYMMDD_HHMM'
-    folder_name = dt.datetime.now().strftime('%Y%m%d_%H%M')
-    path = os.path.join('.', f'{folder_name}_{save_model_path}')
+    current_datetime = dt.datetime.now().strftime('%Y%m%d_%H%M')
+    base_dir, last_folder = os.path.split(save_model_path)
+    new_last_folder = f"{current_datetime}_{last_folder}"
+    path = os.path.join(base_dir, new_last_folder)
     os.makedirs(path)
     logging.info(f"Saving everything related to this model training run at: {path}")
+
+    # Create the new folder name with the timestamp
+
+    # Combine the base directory with the new folder name
 
     # loading and bringing dataframes into appropriate shape and format
     sm, wf, wa = load_csvs(model_config, smart_meter_files, weather_forecast_files, weather_actuals_files)
