@@ -22,12 +22,12 @@ echo $HOME
 echo $TMPDIR
 
 #Copy input file to scratch
-cp $HOME/2023_05_cleaned_non_pv.csv "$TMPDIR"
-cp $HOME/2023_05_cleaned_pv.csv "$TMPDIR"
-cp $HOME/2023_06_cleaned_non_pv.csv "$TMPDIR"
-cp $HOME/2023_06_cleaned_pv.csv "$TMPDIR"
-cp $HOME/2023-06-amsterdam-actuals_filled_gaps.csv "$TMPDIR"
-cp $HOME/2023_weather_data_06_run_summer.csv "$TMPDIR"
+cp $HOME/data/2023_05_cleaned_non_pv.csv "$TMPDIR"
+cp $HOME/data/2023_05_cleaned_pv.csv "$TMPDIR"
+cp $HOME/data/2023_06_cleaned_non_pv.csv "$TMPDIR"
+cp $HOME/data/2023_06_cleaned_pv.csv "$TMPDIR"
+cp $HOME/data/2023-06-amsterdam-actuals_filled_gaps.csv "$TMPDIR"
+cp $HOME/data/2023_weather_data_06_run_summer.csv "$TMPDIR"
 #cp $HOME/model_config.yaml "$TMPDIR"
 
 echo "Starting training..."
