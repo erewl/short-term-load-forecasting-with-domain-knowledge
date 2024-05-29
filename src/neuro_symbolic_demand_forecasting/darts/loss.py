@@ -67,18 +67,18 @@ class CustomLoss(nn.Module):
         return torch.mean(torch.relu(-output_at_night))
 
     def _get_loss_for_non_pv(self, output, target):
+        # atm we only have one static_covariate feature (PV/Non_PV)
         tensor_idx, tensor_pos = self.feature_mappings['static_covariates']
         static_covariate = target[tensor_idx][:, :, tensor_pos]
-        # atm we only have one static_covariate feature (PV/Non_PV)
-        # reshaping since static covariates is in shape (batch_size,1) , but output has (batch_size,timestep,features)
-        static_covariate = torch.reshape(static_covariate, output.shape)
-
-        mask = (static_covariate == 0) & (output < 0)
-        penalty = torch.zeros_like(output)
-        penalty[mask] = -output[mask]
-
-        penalty_loss = penalty.mean()
-        return penalty_loss
+        non_pv_timeseries_mask = (static_covariate == 0).reshape(-1)
+        non_pv_predictions = output[non_pv_timeseries_mask]
+        non_pv_negative_predictions = non_pv_predictions[non_pv_predictions < 0]
+        if not non_pv_negative_predictions.numel():
+            return 0
+        else:
+            non_pv_negative_predictions = -non_pv_negative_predictions  # flipping to make values positive (for loss term)
+            penalty_loss = non_pv_negative_predictions.mean() # taking the mean of the negative predictions as a penalty term
+            return penalty_loss
 
     def forward(self, output, target):
         real_target = target[-1]  # last element is the target element
@@ -98,7 +98,8 @@ class CustomLoss(nn.Module):
 
             # humid_summer_days and air co (need to define thresholds, since we are working with scaled values)
 
-        logging.debug(f"Lossterms: {loss} + {penalty_term_no_production_at_night} + {penalty_non_pv_negative_predictions}")
+        logging.debug(
+            f"Lossterms: {loss} + {penalty_term_no_production_at_night} + {penalty_non_pv_negative_predictions}")
         return loss + \
                pan_alpha * penalty_term_no_production_at_night + \
                np_alpha * penalty_non_pv_negative_predictions + \
