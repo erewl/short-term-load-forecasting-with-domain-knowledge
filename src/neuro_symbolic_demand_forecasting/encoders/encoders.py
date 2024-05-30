@@ -41,6 +41,13 @@ def create_encoders(model_type: str) -> dict:
     return encoders
 
 
+WEIGHTS = {
+    'no_neg_pred_night': 0,
+    'no_neg_pred_nonpv': 0,
+    'morning_evening_peaks': 0,
+    'air_co': 0,
+}
+
 TFT_MAPPING = {
     "smart_meter": [0, 0],
     # past future_covariates

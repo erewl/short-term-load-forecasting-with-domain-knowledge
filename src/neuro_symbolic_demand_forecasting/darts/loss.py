@@ -54,9 +54,11 @@ class CustomLoss(nn.Module):
         else:
             logging.debug(f"{len(tensor)}")
 
-    def __init__(self, feature_mappings: dict, thresholds: dict):
+    def __init__(self, feature_mappings: dict, weights: dict, thresholds: dict):
         logging.debug('Initializing custom loss')
         self.feature_mappings = feature_mappings
+        self.weights = weights
+        self.thresholds = thresholds
         super(CustomLoss, self).__init__()
 
     def _get_loss_for_night(self, output, target):
@@ -73,21 +75,31 @@ class CustomLoss(nn.Module):
         non_pv_timeseries_mask = (static_covariate == 0).reshape(-1)
         non_pv_predictions = output[non_pv_timeseries_mask]
         non_pv_negative_predictions = non_pv_predictions[non_pv_predictions < 0]
-        if not non_pv_negative_predictions.numel():
+        if not non_pv_negative_predictions.numel():  # empty tensor, so we are not calculating but just returning 0 for this penalty term
             return 0
         else:
             non_pv_negative_predictions = -non_pv_negative_predictions  # flipping to make values positive (for loss term)
-            penalty_loss = non_pv_negative_predictions.mean() # taking the mean of the negative predictions as a penalty term
+            penalty_loss = non_pv_negative_predictions.mean()  # taking the mean of the negative predictions as a penalty term
             return penalty_loss
+
+    def _get_loss_for_airco_usage(self, output, target):
+        return 0
+
+    def _get_loss_for_peaks(self, output, target):
+        return 0
 
     def forward(self, output, target):
         real_target = target[-1]  # last element is the target element
 
         loss = torch.mean((output - real_target) ** 2)
-        penalty_term_no_production_at_night, pan_alpha = 0, 1  # for PTUs that are between sunset and sunrise penalize negative predictions
-        penalty_term_morning_evening_peaks, mep_alpha = 0, 0  # for PTUs in the morning and evening peaks we want to penalize errors in any direction
-        penalty_term_air_co_on_humid_summer_days, hsd_alpha = 0, 1  # for PTUs in summer months where global_radiation and humidity are high, we want to avoid underpredictions
-        penalty_non_pv_negative_predictions, np_alpha = 0, 1
+        # for PTUs that are between sunset and sunrise penalize negative predictions
+        penalty_term_no_production_at_night = 0
+        # for PTUs in the morning and evening peaks we want to penalize errors in any direction
+        penalty_term_morning_evening_peaks = 0
+        # for PTUs in summer months where global_radiation and humidity are high, we want to avoid underpredictions
+        penalty_term_air_co_on_humid_summer_days = 0
+        # no negative predictions for a no-solar-panels dataset
+        penalty_non_pv_negative_predictions = 0
 
         if type(target) == tuple:
             # self.print_debugs(target)
@@ -95,13 +107,13 @@ class CustomLoss(nn.Module):
             penalty_term_no_production_at_night = self._get_loss_for_night(output, target)
             # no negative predictions for non_pv timeseries
             penalty_non_pv_negative_predictions = self._get_loss_for_non_pv(output, target)
-
-            # humid_summer_days and air co (need to define thresholds, since we are working with scaled values)
+            penalty_term_air_co_on_humid_summer_days = self._get_loss_for_airco_usage(output, target)
+            penalty_term_morning_evening_peaks = self._get_loss_for_peaks(output, target)
 
         logging.debug(
-            f"Lossterms: {loss} + {penalty_term_no_production_at_night} + {penalty_non_pv_negative_predictions}")
+            f"Lossterms: {loss} + {penalty_term_no_production_at_night} + {penalty_non_pv_negative_predictions} + {penalty_term_air_co_on_humid_summer_days} + {penalty_term_morning_evening_peaks}")
         return loss + \
-               pan_alpha * penalty_term_no_production_at_night + \
-               np_alpha * penalty_non_pv_negative_predictions + \
-               mep_alpha * penalty_term_morning_evening_peaks + \
-               hsd_alpha * penalty_term_air_co_on_humid_summer_days
+               self.weights['no_neg_pred_night'] * penalty_term_no_production_at_night + \
+               self.weights['no_neg_pred_nonpv'] * penalty_non_pv_negative_predictions + \
+               self.weights['morning_evening_peaks'] * penalty_term_morning_evening_peaks + \
+               self.weights['air_co'] * penalty_term_air_co_on_humid_summer_days

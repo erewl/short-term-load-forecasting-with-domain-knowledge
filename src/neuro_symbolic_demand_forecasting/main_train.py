@@ -10,19 +10,18 @@ import pandas as pd
 import torch
 import yaml
 from darts import TimeSeries
-from darts.models import RNNModel, TFTModel, RegressionModel
+from darts.models import RNNModel, TFTModel
 from darts.dataprocessing.transformers import Scaler
-from darts.models.forecasting.torch_forecasting_model import TorchForecastingModel
 from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import EarlyStopping
-from sklearn.linear_model import LinearRegression
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel, ExtendedRNNModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
 
 from sklearn.preprocessing import MinMaxScaler
 
-from neuro_symbolic_demand_forecasting.encoders.encoders import AMS_TZ, create_encoders, LSTM_MAPPING, TFT_MAPPING
+from neuro_symbolic_demand_forecasting.encoders.encoders import AMS_TZ, create_encoders, LSTM_MAPPING, TFT_MAPPING, \
+    WEIGHTS
 
 
 def load_csvs(_config: dict, _smart_meter_files: list[str], _weather_forecast_files: list[str],
@@ -57,7 +56,7 @@ def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSerie
 
 
 def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]:
-    early_stopper = EarlyStopping("val_loss", min_delta=0.001, patience=3, verbose=True)
+    early_stopper = EarlyStopping("val_loss", min_delta=0.0001, patience=10, verbose=True)
     if len(callbacks) == 0:
         callbacks = [early_stopper]
     else:
@@ -94,7 +93,7 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                 return ExtendedTFTModel(
                     input_chunk_length=tft_config['input_chunk_length'],
                     output_chunk_length=tft_config['output_chunk_length'],
-                    loss_fn=CustomLoss(TFT_MAPPING, {}),  # custom loss here
+                    loss_fn=CustomLoss(TFT_MAPPING, WEIGHTS, {}),  # custom loss here
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
@@ -122,7 +121,7 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                 logging.info("Using LSTM with Custom Module for custom Loss")
                 return ExtendedRNNModel(
                     model="LSTM",
-                    loss_fn=CustomLoss(LSTM_MAPPING, thresholds={}),  # custom loss here
+                    loss_fn=CustomLoss(LSTM_MAPPING, WEIGHTS, thresholds={}),  # custom loss here
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
@@ -183,8 +182,10 @@ def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, 
         pv_static_covariate = pd.DataFrame(data={"is_pv": [1]})
         no_pv_static_covariate = pd.DataFrame(data={"is_pv": [0]})
 
+        # .add_holidays(country_code='NL')
         pv_sms = [p.with_static_covariates(pv_static_covariate) for p in pv_sms]
-        non_pv_sms = [p.with_static_covariates(no_pv_static_covariate) for p in non_pv_sms]
+        non_pv_sms = [p.with_static_covariates(no_pv_static_covariate) for p in
+                      non_pv_sms]
         smart_meter_tss = pv_sms + non_pv_sms
 
     # matching the length of covariates with length of timeseries array
@@ -288,7 +289,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 val_series=val_tss,
                 val_future_covariates=weather_forecast_ts,
                 verbose=True,
-                # trainer=pl_trainer_kwargs # would be nice to have early stopping here
+                trainer=pl_trainer_kwargs  # would be nice to have early stopping here
             )
         else:
             raise Exception(f'Training for other models not implemented yet')
