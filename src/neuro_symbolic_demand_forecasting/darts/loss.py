@@ -70,7 +70,7 @@ class CustomLoss(nn.Module):
 
     def _get_loss_for_non_pv(self, output, target):
         # atm we only have one static_covariate feature (PV/Non_PV)
-        tensor_idx, tensor_pos = self.feature_mappings['static_covariates']
+        tensor_idx, tensor_pos = self.feature_mappings['is_pv']
         static_covariate = target[tensor_idx][:, :, tensor_pos]
         non_pv_timeseries_mask = (static_covariate == 0).reshape(-1)
         non_pv_predictions = output[non_pv_timeseries_mask]

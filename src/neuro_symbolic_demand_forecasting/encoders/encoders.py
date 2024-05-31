@@ -42,8 +42,8 @@ def create_encoders(model_type: str) -> dict:
 
 
 WEIGHTS = {
-    'no_neg_pred_night': 0,
-    'no_neg_pred_nonpv': 0,
+    'no_neg_pred_night': 1,
+    'no_neg_pred_nonpv': 1,
     'morning_evening_peaks': 0,
     'air_co': 0,
 }
@@ -76,7 +76,9 @@ TFT_MAPPING = {
     "future_day_of_week": [3, 5],
     "future_part_of_day": [3, 6],
     # static covariates
-    "static_covariates": [4, 0]
+    "is_pv": [4, 0],
+    "is_holiday": [4, 1],
+
 }
 
 LSTM_MAPPING = {
