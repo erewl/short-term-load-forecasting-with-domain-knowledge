@@ -3,19 +3,19 @@ import logging
 import argparse
 import os
 import pickle
+from typing import Sequence
 
+import torch
 import torch.nn as nn
 import numpy as np
 import optuna
 import yaml
 import datetime as dt
 import pytorch_lightning as pl
-from darts.metrics import smape
+from darts.metrics import smape, r2_score, rmse
 from darts.models import TFTModel
 from optuna.samplers import RandomSampler
-from optuna.visualization import plot_param_importances, plot_contour, plot_optimization_history
 from optuna_integration.pytorch_lightning import PyTorchLightningPruningCallback
-from pytorch_lightning.callbacks import EarlyStopping
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
@@ -45,7 +45,24 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
 
     _config = model_config['tft_config']
 
-    def objective(trial):
+    def objective(trial) -> Sequence[float]:
+
+        pruning_callback = OptunaPruning(trial, monitor="val_loss")
+
+        trainer = pl.Trainer(
+            max_epochs=_config['n_epochs'],
+            callbacks=[pruning_callback]
+        )
+        num_workers = 0
+        if torch.cuda.is_available() and _full_config['gpu_enable']:
+            torch.set_float32_matmul_precision('high')
+            trainer = pl.Trainer(
+                devices=[0],
+                accelerator='gpu',
+                max_epochs=_config['n_epochs'],
+                callbacks=[pruning_callback]
+            )
+            num_workers = 4
 
         def get_suggestion(suggest_fn, name):
             if _config[name]['increment'] == 0:
@@ -56,14 +73,6 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
                                   low=_config[name]['start'],
                                   high=_config[name]['end'],
                                   step=_config[name]['increment'])
-
-        # early_stopper = EarlyStopping("val_loss", min_delta=0.0001, patience=10, verbose=True)
-        pruning_callback: list = [OptunaPruning(trial, monitor="val_loss")]
-
-        pl_trainer_kwargs, num_workers = get_trainer_kwargs(_full_config, callbacks=pruning_callback)
-        # pl_trainer_kwargs['max_epochs'] = _config['n_epochs']
-        trainer = pl.Trainer(max_epochs=_config['n_epochs'], callbacks=pruning_callback)
-        # TODO add early stopping here too
 
         input_chunk_length = get_suggestion(trial.suggest_int, 'input_chunk_length')
         hidden_size = get_suggestion(trial.suggest_int, 'hidden_size')
@@ -140,14 +149,21 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
                               past_covariates=weather_actuals_ts,
                               future_covariates=weather_forecast_ts, n=output_chunk_length)
 
-        smapes = smape(val_tss, preds, n_jobs=-1, verbose=True)
-        smape_val = np.mean(smapes)
+        # smapes = smape(val_tss, preds, n_jobs=-1, verbose=True)
+        # smape_val = np.mean(smapes)
+        # r2s = r2_score(val_tss, preds, n_jobs=-1, verbose=True)
+        # r2_val = np.mean(r2s)
+        rmses = rmse(val_tss, preds, n_jobs=-1, verbose=True)
+        rmse_val = np.mean(rmses)
 
-        return smape_val if smape_val != np.nan else float("inf")
+        return rmse_val if rmse_val != np.nan else float("inf")
 
-    study = optuna.create_study(study_name='test', direction="minimize", sampler=RandomSampler())
+    study = optuna.create_study(study_name='test',
+                                direction="minimize",
+                                sampler=RandomSampler())
+
     # sadly we can only run one at a time?????
-    study.optimize(objective, n_jobs=1, n_trials=3, callbacks=[print_callback])
+    study.optimize(objective, n_jobs=-1, n_trials=_full_config['trials'], callbacks=[print_callback])
 
     logging.info(f"Best params: {study.best_params}")
     logging.info(f"Best value: {study.best_value}")
