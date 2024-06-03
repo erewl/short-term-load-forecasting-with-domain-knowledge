@@ -9,7 +9,7 @@
 #SBATCH --mail-type=BEGIN,END
 #SBATCH --mail-user=katrin.grunert@student.uva.nl
 #SBATCH --time=08:00:00
-#SBATCH --mem=32gb
+#SBATCH --mem=16gb
 
 module load 2023
 module load Python/3.11.3-GCCcore-12.3.0
