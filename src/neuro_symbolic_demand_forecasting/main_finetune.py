@@ -146,7 +146,8 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
         return smape_val if smape_val != np.nan else float("inf")
 
     study = optuna.create_study(study_name='test', direction="minimize", sampler=RandomSampler())
-    study.optimize(objective, n_jobs=-1, n_trials=3, callbacks=[print_callback])
+    # sadly we can only run one at a time?????
+    study.optimize(objective, n_jobs=1, n_trials=3, callbacks=[print_callback])
 
     logging.info(f"Best params: {study.best_params}")
     logging.info(f"Best value: {study.best_value}")
@@ -177,9 +178,11 @@ if __name__ == "__main__":
         logging.info(f'Loading config from {args.model_configuration}')
         model_config = yaml.safe_load(file)
 
-    # Creating folder to safe scalers and model 'YYYYMMDD_HHMM'
-    folder_name = dt.datetime.now().strftime('%Y%m%d_%H%M%S')
-    path = os.path.join(args.save_model_as, folder_name)
+    # Creating folder to save scalers and model 'YYYYMMDD_HHMM'
+    current_datetime = dt.datetime.now().strftime('%Y%m%d_%H%M')
+    base_dir, last_folder = os.path.split(args.save_model_as)
+    new_last_folder = f"{current_datetime}_{last_folder}"
+    path = os.path.join(base_dir, new_last_folder)
     os.makedirs(path)
     logging.info(f"Saving everything related to this model training run at: {path}")
 
