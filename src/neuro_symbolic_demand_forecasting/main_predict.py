@@ -5,7 +5,9 @@ import argparse
 import pickle
 from typing import Optional, List
 
+import numpy as np
 import pandas as pd
+import pytz
 import torch
 import yaml
 from darts import TimeSeries
@@ -39,7 +41,8 @@ def main_evaluate(_config: dict, start_date: str, end_date: str,
                                                                  scale=False)
         assert len(sm_tss) == 1
         sm_tss = sm_tss[0]
-        if any(sm_tss.min(axis=0) < 0):
+
+        if (sm_tss.min(axis=0) < 0).values.any():
             scaler = pv_scaler
             prefix = 'pv'
         else:
@@ -55,6 +58,7 @@ def main_evaluate(_config: dict, start_date: str, end_date: str,
         for d in pd.date_range(start_date, end_date):  # could also be pass as an array of timeseries to the model.
             input_start, input_end = d - dt.timedelta(days=7), d - dt.timedelta(minutes=15)
             scaled_input = scaled_smart_meter_ts[input_start:input_end]
+            logging.info(f"Length: {len(scaled_input)}")
             forecast_start, forecast_end = d, d + dt.timedelta(days=1) - dt.timedelta(minutes=15)
             logging.info(f"Using {input_start} to {input_end} to forecast {forecast_start} to {forecast_end}")
             scaled_actuals = scaled_smart_meter_ts[forecast_start:forecast_end]
@@ -68,7 +72,8 @@ def main_evaluate(_config: dict, start_date: str, end_date: str,
                                                                                                      'gross_predicted')
             rescaled_actuals = scaler.inverse_transform(scaled_actuals).with_columns_renamed('gross', 'gross_actuals')
 
-            day_metrics = get_metrics(rescaled_actuals, rescaled_predictions)
+            subset_prices = prices[rescaled_predictions.time_index.min():rescaled_predictions.time_index.max()]
+            day_metrics = get_metrics(rescaled_actuals, rescaled_predictions, subset_prices)
             day_metrics['date'] = d
             metrics = pd.concat([metrics, pd.DataFrame([day_metrics])])
 
@@ -76,7 +81,10 @@ def main_evaluate(_config: dict, start_date: str, end_date: str,
                 ts = rescaled_predictions.stack(rescaled_actuals)
             else:
                 ts = ts.append(rescaled_predictions.stack(rescaled_actuals))
-        total_metrics = get_metrics(ts['gross_actuals'], ts['gross_predicted'])
+
+        subset_prices = prices[ts.time_index.min():ts.time_index.max()]
+        logging.info("Total metrics:")
+        total_metrics = get_metrics(ts['gross_actuals'], ts['gross_predicted'], subset_prices)
         total_metrics['date'] = 'full'
 
         metrics = pd.concat([metrics, pd.DataFrame([total_metrics])])
@@ -85,7 +93,22 @@ def main_evaluate(_config: dict, start_date: str, end_date: str,
         ts.to_csv(f'{model_folder}/{end_date}_{start_date}_{prefix}_evaluation_data.csv')
 
 
-def get_metrics(_target, _predicted):
+def _compute_imbalance_result(_target, _predicted, _prices):
+    error = _predicted - _target
+    imbalance_short = _prices['IMBALANCE_SHORT_EUR_MWH'].values()
+    imbalance_long = _prices['IMBALANCE_LONG_EUR_MWH'].values()
+    spot_price = _prices['SPOT_EUR_MWH'].values()
+
+    error_vals = error.values()
+    ib_result = np.where(
+        error_vals < 0,
+        error_vals * (imbalance_short - spot_price) / 1000 / 1000,
+        error_vals * (imbalance_long - spot_price) / 1000 / 1000
+    )
+    return ib_result
+
+
+def get_metrics(_target, _predicted, _prices):
     # sMAPE
     smape_ = smape(_target, _predicted)
     mape_ = mape(_target, _predicted)
@@ -93,6 +116,7 @@ def get_metrics(_target, _predicted):
     # wape_ = (_target - _predicted).abs().sum() / _target.sum()
     rmse_ = rmse(_target, _predicted)
     r2_ = r2_score(_target, _predicted)
+    imbalance = _compute_imbalance_result(_target, _predicted, _prices)
 
     metrics = {
         'sMAPE': round(smape_, 3),
@@ -101,6 +125,7 @@ def get_metrics(_target, _predicted):
         'MAE': round(mae_, 3),
         'RMSE': round(rmse_, 3),
         'R2': round(r2_, 3),
+        'Imbalance': round(imbalance.sum(), 3)
     }
 
     logging.info('\n'.join([f"{k}: {v} " for k, v in metrics.items()]))
@@ -132,6 +157,11 @@ if __name__ == "__main__":
     with open(args.model_configuration, 'r') as file:
         logging.info(f'Loading config from {args.model_configuration}')
         model_config = yaml.safe_load(file)
+
+    prices = pd.read_csv('data/2023-04_to_08_prices.csv', parse_dates=['DELIVERY_DATETIME']).set_index(
+        'DELIVERY_DATETIME')
+    prices.index = prices.index.tz_convert(pytz.timezone('Europe/Amsterdam')).tz_localize(None)
+    prices = TimeSeries.from_dataframe(prices, freq='15min')
 
     mf = []
     if args.model_folders:

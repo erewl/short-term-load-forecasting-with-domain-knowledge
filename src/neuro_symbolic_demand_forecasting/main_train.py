@@ -199,28 +199,16 @@ def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, 
 
 
 def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], weather_actuals_files: list[str],
-               model_config: dict, save_model_path: str):
+               model_config: dict, _path: str):
     # load_dotenv()
     logging.info('Starting training!')
-
-    # Creating folder to safe scalers and model 'YYYYMMDD_HHMM'
-    current_datetime = dt.datetime.now().strftime('%Y%m%d_%H%M')
-    base_dir, last_folder = os.path.split(save_model_path)
-    new_last_folder = f"{current_datetime}_{last_folder}"
-    path = os.path.join(base_dir, new_last_folder)
-    os.makedirs(path)
-    logging.info(f"Saving everything related to this model training run at: {path}")
-
-    # Create the new folder name with the timestamp
-
-    # Combine the base directory with the new folder name
 
     # loading and bringing dataframes into appropriate shape and format
     sm, wf, wa = load_csvs(model_config, smart_meter_files, weather_forecast_files, weather_actuals_files)
     smart_meter_tss, weather_forecast_ts, weather_actuals_ts = create_timeseries_from_dataframes(sm, wf, wa,
                                                                                                  scale=True,
                                                                                                  add_static_covariates=True,
-                                                                                                 pickled_scaler_folder=path)
+                                                                                                 pickled_scaler_folder=_path)
     logging.info("Dtypes of SM, WF, WA")
     logging.info(smart_meter_tss[0].values().dtype)
     logging.info(weather_forecast_ts[0].values().dtype)
@@ -289,7 +277,6 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 val_series=val_tss,
                 val_future_covariates=weather_forecast_ts,
                 verbose=True,
-                trainer=pl_trainer_kwargs  # would be nice to have early stopping here
             )
         else:
             raise Exception(f'Training for other models not implemented yet')
@@ -327,14 +314,8 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
         else:
             raise Exception(f'Training for other models not implemented yet')
 
-    # validate
-
-    # logging.info("MAPE = {:.2f}%".format(mape(actual, pred)))
-    # logging.info("SMAPE = {:.2f}%".format(smape(actual, pred)))
-    # logging.info("MAE = {:.2f}%".format(mae(actual, pred)))
-
-    logging.info(f"Saving model at {path}/trained_model.pkl")
-    model.save(f'{path}/train_model.pkl')
+    logging.info(f"Saving model at {_path}/trained_model.pkl")
+    model.save(f'{_path}/train_model.pkl')
 
 
 if __name__ == "__main__":
@@ -352,12 +333,20 @@ if __name__ == "__main__":
                         help='path where model should be saved')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
 
     with open(args.model_configuration, 'r') as file:
         logging.info(f'Loading config from {args.model_configuration}')
         model_config = yaml.safe_load(file)
         print(model_config)
+
+    # Creating folder to save scalers and model 'YYYYMMDD_HHMM'
+    current_datetime = dt.datetime.now().strftime('%Y%m%d_%H%M')
+    base_dir, last_folder = os.path.split(args.save_model_as)
+    new_last_folder = f"{current_datetime}_{last_folder}"
+    path = os.path.join(base_dir, new_last_folder)
+    os.makedirs(path)
+    logging.info(f"Saving everything related to this model training run at: {path}")
 
     smd_files, wfd_files, wad_files = [], [], []
     if args.smart_meter_data:
@@ -367,4 +356,4 @@ if __name__ == "__main__":
     if args.weather_actuals_data:
         wad_files = [file.strip() for file in ','.join(args.weather_actuals_data).split(',')]
 
-    main_train(smd_files, wfd_files, wad_files, model_config, args.save_model_as)
+    main_train(smd_files, wfd_files, wad_files, model_config, path)
