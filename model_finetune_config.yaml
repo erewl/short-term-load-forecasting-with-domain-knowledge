@@ -11,40 +11,40 @@ tft_config:
   input_chunk_length:
     start: 672 # 7*24*4 (one week)
     end: 672
-    increment: 672
+    increment: 0
   output_chunk_length: 96 #1*24 (one day)
   hidden_size:
-    start: 16
-    end: 32
-    increment: 16
-  hidden_continuous_size: #[16, 32, 64]
-    start: 8
-    end: 16
-    increment: 8
-  num_attention_heads:
-    start: 2
+    start: 4
     end: 8
-    increment: 2
-  lstm_layers:
+    increment: 4
+  hidden_continuous_size: #[16, 32, 64]
     start: 2
     end: 4
-    increment: 2
+    increment: 0
+  num_attention_heads:
+    start: 1
+    end: 2
+    increment: 1
+  lstm_layers:
+    start: 2
+    end: 2
+    increment: 0
   batch_size:
-    start: 32
-    end: 64
-    increment: 32
-  n_epochs: 40
+    start: 8
+    end: 8
+    increment: 0
+  n_epochs: 1
   dropout:
     start: 0.1
     end: 0.7
-    increment: 0.6
-  use_static_covariates: [ false, true ]
-  add_relative_index: [ false, true ]
+    increment: 0
+  use_static_covariates: [ true ]
+  add_relative_index: [ false ]
   optimizer_kwargs:
-    lr: 0.005
+    lr: 0.001
   #  random_state: 42
   #  save_checkpoints: true
-  loss_fn: "Custom" # Custom or MSE or similar metrics
+  loss_fn: "MSE" # Custom or MSE or similar metrics
 
 ## tiny config for local training
 #tft_config:
