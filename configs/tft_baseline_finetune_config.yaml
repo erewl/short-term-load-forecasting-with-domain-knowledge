@@ -4,8 +4,8 @@ weather_actuals_features: [ 'wind_speed', 'global_radiation', 'air_pressure', 'a
 model_class: 'TFT'
 run_with_validation: true
 gpu_enable: true
-trials: 20
-num_workers: -1
+trials: 100
+num_workers: 4
 run_learning_rate_finder: false
 
 tft_config:
