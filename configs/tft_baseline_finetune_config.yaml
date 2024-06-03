@@ -1,0 +1,48 @@
+weather_forecast_features: [ 'wind_speed_10m', 'grad_accum_ground_0m', 'pres_instant_ground_0m', 't_instant_ground_2m', 'r_instant_ground_2m' ]
+weather_actuals_features: [ 'wind_speed', 'global_radiation', 'air_pressure', 'air_temperature', 'relative_humidity' ]
+
+model_class: 'TFT'
+run_with_validation: true
+gpu_enable: true
+trials: 20
+run_learning_rate_finder: false
+
+tft_config:
+  input_chunk_length:
+    start: 672 # 7*24*4 (one week)
+    end: 672
+    increment: 0
+  output_chunk_length: 96 #1*24 (one day)
+  hidden_size:
+    start: 8
+    end: 32
+    increment: 8
+  hidden_continuous_size: #[16, 32, 64]
+    start: 2
+    end: 4
+    increment: 2
+  num_attention_heads:
+    start: 4
+    end: 8
+    increment: 4
+  lstm_layers:
+    start: 4
+    end: 4
+    increment: 0
+  batch_size:
+    start: 32
+    end: 64
+    increment: 32
+  n_epochs: 20
+  dropout:
+    start: 0.2
+    end: 0.7
+    increment: 0.5
+  use_static_covariates: [ true ]
+  add_relative_index: [ false ]
+  optimizer_kwargs:
+    lr: 0.001
+  #  random_state: 42
+  #  save_checkpoints: true
+  loss_fn: "MSE" # Custom or MSE or similar metrics
+
