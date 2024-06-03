@@ -12,42 +12,58 @@ import datetime as dt
 import pytorch_lightning as pl
 from darts.metrics import smape
 from darts.models import TFTModel
+from optuna.samplers import RandomSampler
 from optuna.visualization import plot_param_importances, plot_contour, plot_optimization_history
 from optuna_integration.pytorch_lightning import PyTorchLightningPruningCallback
+from pytorch_lightning.callbacks import EarlyStopping
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
-from neuro_symbolic_demand_forecasting.encoders.encoders import create_encoders
-from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes, get_trainer_kwargs
+from neuro_symbolic_demand_forecasting.encoders.encoders import create_encoders, TFT_MAPPING, WEIGHTS
+from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes, \
+    get_trainer_kwargs
+
+
+# workaround to fix the "Expected parent" error: https://github.com/optuna/optuna/issues/4689
+class OptunaPruning(PyTorchLightningPruningCallback, pl.Callback):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 
 def print_callback(study, trial):
-    print(f"Current value: {trial.value}, Current params: {trial.params}")
-    print(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
+    logging.info(f"Current value: {trial.value}, Current params: {trial.params}")
+    logging.info(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
 
 
-def create_objective(model_config: dict, data: tuple):
-    match model_config['model_class']:
-        case 'TFT':
-            return create_tft_objective(model_config['tft_config'], model_config, data)
-        case default:
-            raise Exception(f'No config implement yet for model of type: {default}')
+def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str], weather_actuals_files: list[str],
+                  _full_config: dict, _model_folder: str):
+    sm, wf, wa = load_csvs(model_config, smart_meter_files, weather_forecast_files, weather_actuals_files)
+    smart_meter_tss, weather_forecast_ts, weather_actuals_ts = create_timeseries_from_dataframes(sm, wf, wa,
+                                                                                                 scale=True,
+                                                                                                 add_static_covariates=True,
+                                                                                                 pickled_scaler_folder=path)
 
-
-def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
-    logging.info(_config)
-
-    sms, wfts, wats = data
+    _config = model_config['tft_config']
 
     def objective(trial):
-        def get_suggestion(suggest_fn, name):
-            return suggest_fn(name,
-                              low=_config[name]['start'],
-                              high=_config[name]['end'],
-                              step=_config[name]['increment'])
 
-        pruning_callback: list = [PyTorchLightningPruningCallback(trial, monitor="val_loss")]
-        pl_trainer_kwargs, num_workers = get_trainer_kwargs(_base_config, callbacks=pruning_callback)
+        def get_suggestion(suggest_fn, name):
+            if _config[name]['increment'] == 0:
+                return _config[name]['start']
+            else:
+                logging.info(f"Parameter {name} will be tuned.")
+                return suggest_fn(name,
+                                  low=_config[name]['start'],
+                                  high=_config[name]['end'],
+                                  step=_config[name]['increment'])
+
+        # early_stopper = EarlyStopping("val_loss", min_delta=0.0001, patience=10, verbose=True)
+        pruning_callback: list = [OptunaPruning(trial, monitor="val_loss")]
+
+        pl_trainer_kwargs, num_workers = get_trainer_kwargs(_full_config, callbacks=pruning_callback)
+        # pl_trainer_kwargs['max_epochs'] = _config['n_epochs']
+        trainer = pl.Trainer(max_epochs=_config['n_epochs'], callbacks=pruning_callback)
+        # TODO add early stopping here too
 
         input_chunk_length = get_suggestion(trial.suggest_int, 'input_chunk_length')
         hidden_size = get_suggestion(trial.suggest_int, 'hidden_size')
@@ -57,113 +73,88 @@ def create_tft_objective(_config: dict, _base_config: dict, data: tuple):
         batch_size = get_suggestion(trial.suggest_int, 'batch_size')
         dropout = get_suggestion(trial.suggest_float, 'dropout')
 
-        use_static_covariates = trial.suggest_categorical("use_static_covariates", [False, True])
-        add_relative_index = trial.suggest_categorical("add_relative_index", [False, True])
+        use_static_covariates = trial.suggest_categorical("use_static_covariates", [True])
+        add_relative_index = trial.suggest_categorical("add_relative_index", [False])
 
-        logging.info(
-            f"PARAMS: \n input_chunk_length: {input_chunk_length}, "
-            f"\n hidden_size: {hidden_size}, "
-            f"\n hidden_continuous_size: {hidden_continuous_size}, "
-            f"\n num_attention_heads: {num_attention_heads}, "
-            f"\n lstm_layers: {lstm_layers}, "
-            f"\n batch_size: {batch_size}, "
-            f"\n dropout: {dropout}, "
-            f"\n use_static_covariates: {use_static_covariates}, "
-            f"\n add_relative_index: {add_relative_index}"
-        )
-
-        # TODO could be reused in training too
-        model_cls = TFTModel
         match _config.get('loss_fn'):
-            case 'MSE':
-                loss_fn = nn.MSELoss()
             case 'Custom':
-                loss_fn = CustomLoss()
-                model_cls = ExtendedTFTModel
+                loss_fn = CustomLoss(TFT_MAPPING, {}, WEIGHTS)
+                # model_cls = ExtendedTFTModel
+                model = ExtendedTFTModel(
+                    input_chunk_length=input_chunk_length,
+                    output_chunk_length=_config['output_chunk_length'],
+                    hidden_size=hidden_size,
+                    hidden_continuous_size=hidden_continuous_size,
+                    num_attention_heads=num_attention_heads,
+                    lstm_layers=lstm_layers,
+                    batch_size=batch_size,
+                    add_encoders=create_encoders('TFT'),
+                    dropout=dropout,
+                    loss_fn=loss_fn,
+                    use_static_covariates=use_static_covariates,
+                    add_relative_index=add_relative_index,
+                    optimizer_kwargs=_config['optimizer_kwargs'],
+                    # pl_trainer_kwargs=pl_trainer_kwargs
+                )
             case other:
                 logging.info(f'{other} not implemented yet, falling back to MSE')
                 loss_fn = nn.MSELoss()
-        logging.info(f"Initializing Model {model_cls} with {loss_fn}")
+                model = TFTModel(
+                    input_chunk_length=input_chunk_length,
+                    output_chunk_length=_config['output_chunk_length'],
+                    hidden_size=hidden_size,
+                    hidden_continuous_size=hidden_continuous_size,
+                    num_attention_heads=num_attention_heads,
+                    lstm_layers=lstm_layers,
+                    batch_size=batch_size,
+                    add_encoders=create_encoders('TFT'),
+                    dropout=dropout,
+                    loss_fn=loss_fn,
+                    use_static_covariates=use_static_covariates,
+                    add_relative_index=add_relative_index,
+                    optimizer_kwargs=_config['optimizer_kwargs'],
+                    # pl_trainer_kwargs=pl_trainer_kwargs
+                )
 
-        model = model_cls(
-            input_chunk_length=input_chunk_length,
-            output_chunk_length=_config['output_chunk_length'],
-            hidden_size=hidden_size,
-            hidden_continuous_size=hidden_continuous_size,
-            num_attention_heads=num_attention_heads,
-            lstm_layers=lstm_layers,
-            batch_size=batch_size,
-            add_encoders=create_encoders('TFT'),
-            dropout=dropout,
-            loss_fn=loss_fn,
-            use_static_covariates=use_static_covariates,
-            add_relative_index=add_relative_index,
-            optimizer_kwargs=_config['optimizer_kwargs'],
-            pl_trainer_kwargs=pl_trainer_kwargs
-        )
+        input_chunk_length = model.input_chunk_length
+        output_chunk_length = model.output_chunk_length
+        validation_set_size = input_chunk_length + output_chunk_length
+        train_tss, val_tss = zip(*[sm.split_after(len(sm) - validation_set_size - 1) for sm in smart_meter_tss])
+        train_tss = list(train_tss)
+        val_tss = list(val_tss)
 
-        train_tss, val_tss = zip(*[sm.split_after(0.7) for sm in sms])
-        # train the model
         model.fit(
             series=train_tss,
-            past_covariates=wats,  # actuals
-            future_covariates=wfts,  # forecasts
-            val_series=sms,
-            val_past_covariates=wats,  # actuals
-            val_future_covariates=wfts,  # forecasts
+            past_covariates=weather_actuals_ts,
+            future_covariates=weather_forecast_ts,
+            val_series=smart_meter_tss,
+            val_past_covariates=weather_actuals_ts,
+            val_future_covariates=weather_forecast_ts,
             epochs=_config['n_epochs'],
-            trainer=pl.Trainer(),
-            # max_samples_per_ts=MAX_SAMPLES_PER_TS,
+            trainer=trainer,
             num_loader_workers=num_workers,
         )
 
         # Evaluate how good it is on the validation set
         preds = model.predict(series=train_tss,
-                              past_covariates=wats,
-                              future_covariates=wfts, n=96)
+                              past_covariates=weather_actuals_ts,
+                              future_covariates=weather_forecast_ts, n=output_chunk_length)
 
         smapes = smape(val_tss, preds, n_jobs=-1, verbose=True)
         smape_val = np.mean(smapes)
 
         return smape_val if smape_val != np.nan else float("inf")
 
-    return objective
+    study = optuna.create_study(study_name='test', direction="minimize", sampler=RandomSampler())
+    study.optimize(objective, n_jobs=-1, n_trials=3, callbacks=[print_callback])
 
+    logging.info(f"Best params: {study.best_params}")
+    logging.info(f"Best value: {study.best_value}")
+    logging.info(f"Best Trial: {study.best_trial}")
+    logging.info(f"Trials: {study.trials}")
 
-def main_finetune(smart_meter_files: list[str], weather_forecast_files: list[str], weather_actuals_files: list[str],
-                  model_config_path: str, save_model_path: str):
-    logging.info('Starting training!')
-    with open(model_config_path, 'r') as file:
-        logging.info(f'Loading config from {model_config_path}')
-        model_config = yaml.safe_load(file)
-
-    # Creating folder to safe scalers and model 'YYYYMMDD_HHMM'
-    folder_name = dt.datetime.now().strftime('%Y%m%d_%H%M%S')
-    path = os.path.join(save_model_path, folder_name)
-    os.makedirs(path)
-    logging.info(f"Saving everything related to this model training run at: {path}")
-
-    sm, wf, wa = load_csvs(model_config, smart_meter_files, weather_forecast_files, weather_actuals_files)
-    smart_meter_tss, weather_forecast_ts, weather_actuals_ts = create_timeseries_from_dataframes(sm, wf, wa,
-                                                                                                 scale=True,
-                                                                                                 pickled_scaler_folder=path)
-
-    objective = create_objective(model_config, data=(smart_meter_tss, weather_forecast_ts, weather_actuals_ts))
-
-    study = optuna.create_study(direction="minimize")
-
-    # study.optimize(objective, timeout=7200, callbacks=[print_callback])
-    # to limit the number of trials instead:
-    study.optimize(objective, n_jobs=-1, n_trials=20, gc_after_trial=True, callbacks=[print_callback])
-
-    print(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
-    with open(f'{path}/study.pkl', 'wb') as f:
+    with open(f'{_model_folder}/study.pkl', 'wb') as f:
         pickle.dump(study, f)
-
-# only run this locally
-    # plot_optimization_history(study)
-    # plot_contour(study, params=["lr", "num_filters"])
-    # plot_param_importances(study)
 
 
 if __name__ == "__main__":
@@ -182,6 +173,16 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.DEBUG)
 
+    with open(args.model_configuration, 'r') as file:
+        logging.info(f'Loading config from {args.model_configuration}')
+        model_config = yaml.safe_load(file)
+
+    # Creating folder to safe scalers and model 'YYYYMMDD_HHMM'
+    folder_name = dt.datetime.now().strftime('%Y%m%d_%H%M%S')
+    path = os.path.join(args.save_model_as, folder_name)
+    os.makedirs(path)
+    logging.info(f"Saving everything related to this model training run at: {path}")
+
     smd_files, wfd_files, wad_files = [], [], []
     if args.smart_meter_data:
         smd_files = [file.strip() for file in ','.join(args.smart_meter_data).split(',')]
@@ -190,4 +191,4 @@ if __name__ == "__main__":
     if args.weather_actuals_data:
         wad_files = [file.strip() for file in ','.join(args.weather_actuals_data).split(',')]
 
-    main_finetune(smd_files, wfd_files, wad_files, args.model_configuration, args.save_model_as)
+    main_optimize(smd_files, wfd_files, wad_files, model_config, path)
