@@ -163,7 +163,7 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
                                 sampler=RandomSampler())
 
     # sadly we can only run one at a time?????
-    study.optimize(objective, n_jobs=-1, n_trials=_full_config['trials'], callbacks=[print_callback])
+    study.optimize(objective, n_jobs=_full_config['num_workers'], n_trials=_full_config['trials'], callbacks=[print_callback])
 
     logging.info(f"Best params: {study.best_params}")
     logging.info(f"Best value: {study.best_value}")

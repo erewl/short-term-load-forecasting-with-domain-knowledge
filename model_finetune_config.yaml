@@ -4,6 +4,8 @@ weather_actuals_features: [ 'wind_speed', 'global_radiation', 'air_pressure', 'a
 model_class: 'TFT'
 run_with_validation: true
 gpu_enable: true
+trials: 2
+num_workers: 1 # how many parallels for running the optimization
 run_learning_rate_finder: false
 
 # from "Application of Temporal Fusion Transformer for Day-Ahead PV Power Forecasting"
@@ -45,6 +47,23 @@ tft_config:
   #  random_state: 42
   #  save_checkpoints: true
   loss_fn: "MSE" # Custom or MSE or similar metrics
+  weights:
+    no_neg_pred_night:
+        start: 0
+        end: 1
+        increment: 0.5
+    no_neg_pred_nonpv:
+        start: 0
+        end: 1
+        increment: 0.5
+    morning_evening_peaks:
+        start: 0
+        end: 1
+        increment: 0
+    air_co:
+        start: 0
+        end: 1
+        increment: 0
 
 ## tiny config for local training
 #tft_config:

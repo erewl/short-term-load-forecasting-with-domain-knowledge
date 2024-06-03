@@ -45,5 +45,21 @@ tft_config:
     lr: 0.001
   #  random_state: 42
   #  save_checkpoints: true
-  loss_fn: "MSE" # Custom or MSE or similar metrics
-
+  loss_fn: "Custom" # Custom or MSE or similar metrics
+  weights:
+    no_neg_pred_night:
+        start: 0
+        end: 1
+        increment: 0.5
+    no_neg_pred_nonpv:
+        start: 0
+        end: 1
+        increment: 0.5
+    morning_evening_peaks:
+        start: 0
+        end: 1
+        increment: 0
+    air_co:
+        start: 0
+        end: 1
+        increment: 0
