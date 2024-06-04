@@ -111,13 +111,17 @@ def encode_ptu(idx):
     return ptu + 1
 
 
-def encode_is_holiday(idx):
-    # Select country
+def encode_holiday(idx):
     hl = holidays.country_holidays('NL', years=idx.year)
-    if f'{idx.year}-{idx.month}-{idx.day}' in hl:
+    # if f'{id.year}-{id.month}-{id.day}' in hl: # would only encode holidays
+    if not hl.is_workday(f'{idx.year}-{idx.month}-{idx.day}'):  # includes weekends
         return 1
     else:
         return 0
+
+
+def encode_is_holiday(idx):
+    return idx.map(encode_holiday)
 
 
 class PartOfDayEncoder:
@@ -125,22 +129,22 @@ class PartOfDayEncoder:
         self.city = city
         self.timezone = timezone
 
+    def _encode_part_of_day(self, timestamp):
+        sun_info = sun(self.city.observer, date=timestamp.date())
+        sunrise = sun_info['sunrise'].astimezone(self.timezone)
+        sunset = sun_info['sunset'].astimezone(self.timezone).time()
+
+        morning_start = (sunrise - dt.timedelta(hours=2)).time()
+        if timestamp.time() < morning_start or timestamp.time() > sunset:
+            return 0  # Night
+        elif morning_start <= timestamp.time() < dt.time(10, 0, 0):
+            return 0.25  # Morning
+        elif dt.time(10, 0, 0) <= timestamp.time() < dt.time(13, 0, 0):
+            return 0.5  # Midday
+        elif dt.time(13, 0, 0) <= timestamp.time() < dt.time(16, 0, 0):
+            return 0.75  # Afternoon
+        else:
+            return 1  # Evening
+
     def encode(self, idx):
-        results = []
-        for timestamp in idx:
-            sun_info = sun(self.city.observer, date=timestamp.date())
-            sunrise = sun_info['sunrise'].astimezone(self.timezone).time()
-            sunset = sun_info['sunset'].astimezone(self.timezone).time()
-
-            if timestamp.time() < sunrise or timestamp.time() > sunset:
-                results.append(0)  # Night
-            elif sunrise <= timestamp.time() < dt.time(9, 0, 0):
-                results.append(0.25)  # Morning
-            elif dt.time(9, 0, 0) <= timestamp.time() < dt.time(13, 0, 0):
-                results.append(0.5)  # Midday
-            elif dt.time(13, 0, 0) <= timestamp.time() < dt.time(17, 0, 0):
-                results.append(0.75)  # Afternoon
-            else:
-                results.append(1)  # Evening
-
-        return np.array(results)
+        return idx.map(self._encode_part_of_day)
