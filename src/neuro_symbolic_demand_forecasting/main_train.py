@@ -2,7 +2,7 @@ import argparse
 import logging
 import os
 import pickle
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict
 import torch.nn as nn
 import numpy as np
 import datetime as dt
@@ -20,8 +20,7 @@ from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
 
 from sklearn.preprocessing import MinMaxScaler
 
-from neuro_symbolic_demand_forecasting.encoders.encoders import AMS_TZ, create_encoders, LSTM_MAPPING, TFT_MAPPING, \
-    WEIGHTS
+from neuro_symbolic_demand_forecasting.encoders.encoders import AMS_TZ, create_encoders, LSTM_MAPPING, TFT_MAPPING
 
 
 def load_csvs(_config: dict, _smart_meter_files: list[str], _weather_forecast_files: list[str],
@@ -77,7 +76,7 @@ def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]
     return pl_trainer_kwargs, num_workers
 
 
-def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs=None):
+def _init_model(_model_config: dict, weights: Dict[str, float], callbacks: List[Callback], optimizer_kwargs=None):
     # throughout training we'll monitor the validation loss for early stopping
     pl_trainer_kwargs, num_workers = get_trainer_kwargs(_model_config, callbacks)
     encoders = create_encoders(_model_config['model_class'])
@@ -93,7 +92,7 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                 return ExtendedTFTModel(
                     input_chunk_length=tft_config['input_chunk_length'],
                     output_chunk_length=tft_config['output_chunk_length'],
-                    loss_fn=CustomLoss(TFT_MAPPING, WEIGHTS, {}),  # custom loss here
+                    loss_fn=CustomLoss(TFT_MAPPING, weights, {}),  # custom loss here
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
@@ -121,7 +120,7 @@ def _init_model(_model_config: dict, callbacks: List[Callback], optimizer_kwargs
                 logging.info("Using LSTM with Custom Module for custom Loss")
                 return ExtendedRNNModel(
                     model="LSTM",
-                    loss_fn=CustomLoss(LSTM_MAPPING, WEIGHTS, thresholds={}),  # custom loss here
+                    loss_fn=CustomLoss(LSTM_MAPPING, weights, thresholds={}),  # custom loss here
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
@@ -199,23 +198,17 @@ def create_timeseries_from_dataframes(sm: List[pd.DataFrame], wf: pd.DataFrame, 
 
 
 def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], weather_actuals_files: list[str],
-               model_config: dict, _path: str):
+               model_config: dict, _path: str, _weights: Dict[str, float]):
     # load_dotenv()
     logging.info('Starting training!')
-
     # loading and bringing dataframes into appropriate shape and format
     sm, wf, wa = load_csvs(model_config, smart_meter_files, weather_forecast_files, weather_actuals_files)
     smart_meter_tss, weather_forecast_ts, weather_actuals_ts = create_timeseries_from_dataframes(sm, wf, wa,
                                                                                                  scale=True,
                                                                                                  add_static_covariates=True,
                                                                                                  pickled_scaler_folder=_path)
-    logging.info("Dtypes of SM, WF, WA")
-    logging.info(smart_meter_tss[0].values().dtype)
-    logging.info(weather_forecast_ts[0].values().dtype)
-    logging.info(weather_actuals_ts[0].values().dtype)
-
     # training
-    model = _init_model(model_config, [], {})
+    model = _init_model(model_config, _weights,[], {})
 
     logging.info("Initialized model, beginning with fitting...")
 
@@ -243,7 +236,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                         val_future_covariates=weather_forecast_ts
                                         )
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, callbacks=[],
+                model = _init_model(model_config, weights=_weights, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
 
@@ -267,7 +260,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                         )
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
                 # re-initialzing model with updated learning params
-                model = _init_model(model_config, callbacks=[],
+                model = _init_model(model_config, weights=_weights, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})
 
@@ -288,7 +281,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                         past_covariates=weather_actuals_ts,
                                         future_covariates=weather_forecast_ts)
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, callbacks=[],
+                model = _init_model(model_config, weights=_weights,callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
             model.fit(
@@ -303,7 +296,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 results = model.lr_find(series=smart_meter_tss,
                                         future_covariates=weather_forecast_ts)
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, callbacks=[],
+                model = _init_model(model_config, weights=_weights,callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
             model.fit(
@@ -331,6 +324,8 @@ if __name__ == "__main__":
                         help='path to the model configuration YAML file')
     parser.add_argument('-sv', '--save-model-as', metavar='MODEL_SAVE_PATH', type=str,
                         help='path where model should be saved')
+    parser.add_argument('-w', '--weights', metavar='WEIGHTS', type=str,
+                        help='String of space separated values for the weight initialization e.g. "1 0 0 0"')
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG)
@@ -348,12 +343,16 @@ if __name__ == "__main__":
     os.makedirs(path)
     logging.info(f"Saving everything related to this model training run at: {path}")
 
-    smd_files, wfd_files, wad_files = [], [], []
+    smd_files, wfd_files, wad_files, weights = [], [], [], [0, 0, 0, 0]
     if args.smart_meter_data:
         smd_files = [file.strip() for file in ','.join(args.smart_meter_data).split(',')]
     if args.weather_forecast_data:
         wfd_files = [file.strip() for file in ','.join(args.weather_forecast_data).split(',')]
     if args.weather_actuals_data:
         wad_files = [file.strip() for file in ','.join(args.weather_actuals_data).split(',')]
+    if args.weights:
+        weights = [float(weight.strip()) for weight in args.weights.split(' ')]
 
-    main_train(smd_files, wfd_files, wad_files, model_config, path)
+    weight_names = ['no_neg_pred_night', 'no_neg_pred_nonpv', 'morning_evening_peaks', 'air_co']
+
+    main_train(smd_files, wfd_files, wad_files, model_config, path, dict(zip(weight_names, weights)))

@@ -87,7 +87,7 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
 
         match _config.get('loss_fn'):
             case 'Custom':
-                loss_fn = CustomLoss(TFT_MAPPING, {}, WEIGHTS)
+                loss_fn = CustomLoss(TFT_MAPPING, WEIGHTS, {})
                 # model_cls = ExtendedTFTModel
                 model = ExtendedTFTModel(
                     input_chunk_length=input_chunk_length,

@@ -1,0 +1,42 @@
+weather_forecast_features: [ 'wind_speed_10m', 'grad_accum_ground_0m', 'pres_instant_ground_0m', 't_instant_ground_2m', 'r_instant_ground_2m' ]
+weather_actuals_features: [ 'wind_speed', 'global_radiation', 'air_pressure', 'air_temperature', 'relative_humidity' ]
+
+model_class: 'TFT'
+run_with_validation: true
+gpu_enable: true
+run_learning_rate_finder: false
+
+## tiny config for local training
+tft_config:
+  input_chunk_length: 672 # 7*24*4
+  output_chunk_length: 96 #1*24
+  hidden_size: 4
+  lstm_layers: 2
+  batch_size: 8
+  n_epochs: 2
+  dropout: 0.1
+  use_static_covariates: true
+  add_relative_index: false
+  optimizer_kwargs:
+#   lr: 0.04365158322401657
+   lr: 0.001
+  random_state: 42
+  save_checkpoints: false
+  loss_fn: "Custom" # else MSE or similar metrics
+
+lstm_config:
+  training_length: 768 # (672+96)
+  input_chunk_length: 672 # 7*24*4
+#  output_chunk_length: 96 # only needed when working with BlockRNNModel
+  hidden_dim: 64
+  dropout: 0.2
+  batch_size: 32
+  n_epochs: 50
+  model_name: "LSTM_P4_custom_loss"
+  log_tensorboard: True
+  random_state: 42
+  loss_fn: "MSE"
+  force_reset: True
+  save_checkpoints: True
+  optimizer_kwargs:
+    lr: 0.0001

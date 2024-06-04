@@ -94,22 +94,25 @@ def main_evaluate(_config: dict, start_date: str, end_date: str,
 
 
 def _compute_imbalance_result(_target, _predicted, _prices):
-    error = _predicted - _target
+    # error = _predicted - _target # double check signs (when production is -, i might need to flip pred and target)
+    error = _target - _predicted
     imbalance_short = _prices['IMBALANCE_SHORT_EUR_MWH'].values()
     imbalance_long = _prices['IMBALANCE_LONG_EUR_MWH'].values()
     spot_price = _prices['SPOT_EUR_MWH'].values()
+    # maybe not use imbalance costs, but use imbalance MWh
 
     error_vals = error.values()
     ib_result = np.where(
-        error_vals < 0,
+        error_vals >= 0,
+        # when predicted is lower than target -> we are short
         error_vals * (imbalance_short - spot_price) / 1000 / 1000,
+        # when predicted is higher than target -> we are long
         error_vals * (imbalance_long - spot_price) / 1000 / 1000
     )
     return ib_result
 
 
 def get_metrics(_target, _predicted, _prices):
-    # sMAPE
     smape_ = smape(_target, _predicted)
     mape_ = mape(_target, _predicted)
     mae_ = mae(_target, _predicted)

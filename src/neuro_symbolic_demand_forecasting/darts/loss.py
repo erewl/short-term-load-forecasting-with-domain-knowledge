@@ -86,7 +86,14 @@ class CustomLoss(nn.Module):
         return 0
 
     def _get_loss_for_peaks(self, output, target):
-        return 0
+        tensor_idx, tensor_pos = self.feature_mappings['future_part_of_day']
+        part_of_day_tensor = target[tensor_idx][:, :, tensor_pos]
+        # 0.25 -> morning, 0.75 -> evening
+        peaks_mask = output[(part_of_day_tensor == 0.25) | (part_of_day_tensor == 0.75)]
+        output_at_peak_times = output[peaks_mask]
+        target_at_peak_times = target[-1][peaks_mask]
+        # take RMSE from these
+        return torch.mean((output_at_peak_times - target_at_peak_times) ** 2)
 
     def forward(self, output, target):
         real_target = target[-1]  # last element is the target element
@@ -102,13 +109,14 @@ class CustomLoss(nn.Module):
         penalty_non_pv_negative_predictions = 0
 
         if type(target) == tuple:
-            # self.print_debugs(target)
+            self.print_debugs(target)
             # no negative predictions at night
             penalty_term_no_production_at_night = self._get_loss_for_night(output, target)
             # no negative predictions for non_pv timeseries
             penalty_non_pv_negative_predictions = self._get_loss_for_non_pv(output, target)
-            penalty_term_air_co_on_humid_summer_days = self._get_loss_for_airco_usage(output, target)
+            # special attention to peak hours (morning and evenings)
             penalty_term_morning_evening_peaks = self._get_loss_for_peaks(output, target)
+            penalty_term_air_co_on_humid_summer_days = self._get_loss_for_airco_usage(output, target)
 
         logging.debug(
             f"Lossterms: {loss} + {penalty_term_no_production_at_night} + {penalty_non_pv_negative_predictions} + {penalty_term_air_co_on_humid_summer_days} + {penalty_term_morning_evening_peaks}")

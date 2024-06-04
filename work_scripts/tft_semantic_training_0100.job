@@ -1,0 +1,41 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu
+#SBATCH --gpus=1
+#SBATCH --job-name=SemanticTFT_Training
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --constraint=scratch-node
+#SBATCH --mail-type=BEGIN,END
+#SBATCH --mail-user=katrin.grunert@student.uva.nl
+#SBATCH --time=04:00:00
+#SBATCH --mem=16gb
+
+module load 2023
+module load Python/3.11.3-GCCcore-12.3.0
+
+cd $HOME/neuro-symbolic-demand-forecasting
+poetry install
+
+echo "Copying files over"
+echo $HOME
+echo $TMPDIR
+
+#Copy input file to scratch
+cp $HOME/data/2023_05_cleaned_non_pv.csv "$TMPDIR"
+cp $HOME/data/2023_05_cleaned_pv.csv "$TMPDIR"
+cp $HOME/data/2023_06_cleaned_non_pv.csv "$TMPDIR"
+cp $HOME/data/2023_06_cleaned_pv.csv "$TMPDIR"
+cp $HOME/data/2023-04_to_08-amsterdam-actuals_filled_gaps.csv "$TMPDIR"
+cp $HOME/data/2023_weather_data_06_run_summer_from_04_to_08.csv "$TMPDIR"
+#cp $HOME/model_config.yaml "$TMPDIR"
+
+echo "Starting training..."
+srun poetry run python -m src.neuro_symbolic_demand_forecasting.main_train \
+    -smd "$TMPDIR"/2023_05_cleaned_non_pv.csv,"$TMPDIR"/2023_05_cleaned_pv.csv,"$TMPDIR"/2023_06_cleaned_non_pv.csv,"$TMPDIR"/2023_06_cleaned_pv.csv  \
+     -wad "$TMPDIR"/2023-04_to_08-amsterdam-actuals_filled_gaps.csv \
+     -wfd "$TMPDIR"/2023_weather_data_06_run_summer_from_04_to_08.csv \
+     -md $HOME/neuro-symbolic-demand-forecasting/configs/tft_semantic_config.yaml \
+     -sv $HOME/tft_semantic
+
+echo "Finished training..."

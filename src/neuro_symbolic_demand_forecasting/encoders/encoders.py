@@ -45,7 +45,7 @@ def create_encoders(model_type: str) -> dict:
 WEIGHTS = {
     'no_neg_pred_night': 1,
     'no_neg_pred_nonpv': 1,
-    'morning_evening_peaks': 0,
+    'morning_evening_peaks': 1,
     'air_co': 0,
 }
 
