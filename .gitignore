@@ -1,3 +1,14 @@
 .env
 .idea/*
+.DS_Store
+
 **/__pycache__/*
+data/**
+unclean_data/**
+models/**
+darts_logs/**
+00_results/**
+debug_*/**
+lightning_logs/**
+*.pkl
+*.pkl.ckpt

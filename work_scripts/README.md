@@ -23,3 +23,4 @@ scontrol show log <job_id>
 ```
 
 
+`accuse` and `accinfo` to inspect the computing budget
