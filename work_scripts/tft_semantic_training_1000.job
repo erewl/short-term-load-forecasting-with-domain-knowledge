@@ -36,6 +36,8 @@ srun poetry run python -m src.neuro_symbolic_demand_forecasting.main_train \
      -wad "$TMPDIR"/2023-04_to_08-amsterdam-actuals_filled_gaps.csv \
      -wfd "$TMPDIR"/2023_weather_data_06_run_summer_from_04_to_08.csv \
      -md $HOME/neuro-symbolic-demand-forecasting/configs/tft_semantic_config.yaml \
-     -sv $HOME/tft_semantic
+     -sv $HOME/tft_semantic \
+     -w "1 0 0 0"
+
 
 echo "Finished training..."
