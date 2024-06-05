@@ -1,9 +1,11 @@
 import logging
+from typing import Any
 
 import pandas as pd
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
+from pytorch_lightning.utilities.types import STEP_OUTPUT
 
 
 class CustomPLModule(pl.LightningModule):
@@ -89,7 +91,7 @@ class CustomLoss(nn.Module):
         tensor_idx, tensor_pos = self.feature_mappings['future_part_of_day']
         part_of_day_tensor = target[tensor_idx][:, :, tensor_pos]
         # 0.25 -> morning, 0.75 -> evening
-        peaks_mask = output[(part_of_day_tensor == 0.25) | (part_of_day_tensor == 0.75)]
+        peaks_mask = ((part_of_day_tensor == 0.25) | (part_of_day_tensor == 0.75))
         output_at_peak_times = output[peaks_mask]
         target_at_peak_times = target[-1][peaks_mask]
         # take RMSE from these
