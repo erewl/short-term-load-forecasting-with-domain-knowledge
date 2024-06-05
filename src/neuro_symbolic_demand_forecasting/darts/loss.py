@@ -23,7 +23,7 @@ class CustomPLModule(pl.LightningModule):
         #     f"debug_03/{batch_idx}_encoded_output.csv", index=False)
         # pd.DataFrame(target.numpy()[:, :, 0]).to_csv(
         #     f"debug_03/{batch_idx}_encoded_target.csv", index=False)
-        # for i, x in enumerate(train_batch[:-1]):
+        # for i, x in enumerate(train_batch):
         #     logging.info(x.shape)
         #     for j in range(x.shape[-1]):
         #         slice_tensor = x[:, :, j]

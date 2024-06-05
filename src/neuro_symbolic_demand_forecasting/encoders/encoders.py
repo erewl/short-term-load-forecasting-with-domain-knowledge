@@ -41,14 +41,6 @@ def create_encoders(model_type: str) -> dict:
         }
     return encoders
 
-
-WEIGHTS = {
-    'no_neg_pred_night': 1,
-    'no_neg_pred_nonpv': 1,
-    'morning_evening_peaks': 1,
-    'air_co': 0,
-}
-
 TFT_MAPPING = {
     "smart_meter": [0, 0],
     "is_holiday_input": [0, 1],

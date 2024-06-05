@@ -14,14 +14,12 @@ import datetime as dt
 import pytorch_lightning as pl
 from darts.metrics import smape, r2_score, rmse
 from darts.models import TFTModel
-from optuna.samplers import RandomSampler
 from optuna_integration.pytorch_lightning import PyTorchLightningPruningCallback
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
-from neuro_symbolic_demand_forecasting.encoders.encoders import create_encoders, TFT_MAPPING, WEIGHTS
-from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes, \
-    get_trainer_kwargs
+from neuro_symbolic_demand_forecasting.encoders.encoders import create_encoders, TFT_MAPPING
+from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes
 
 
 # workaround to fix the "Expected parent" error: https://github.com/optuna/optuna/issues/4689
@@ -30,9 +28,10 @@ class OptunaPruning(PyTorchLightningPruningCallback, pl.Callback):
         super().__init__(*args, **kwargs)
 
 
-def print_callback(study, trial):
-    logging.info(f"Current value: {trial.value}, Current params: {trial.params}")
-    logging.info(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
+def print_callback(study, trials):
+    logging.info(f"Best trials so far: {[(s._trial_id, s.params) for s in study.best_trials]} \n")
+    # logging.info(f"Current value: {trial.value}, Current params: {trial.params}")
+    # logging.info(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
 
 
 def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str], weather_actuals_files: list[str],
@@ -41,7 +40,7 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
     smart_meter_tss, weather_forecast_ts, weather_actuals_ts = create_timeseries_from_dataframes(sm, wf, wa,
                                                                                                  scale=True,
                                                                                                  add_static_covariates=True,
-                                                                                                 pickled_scaler_folder=path)
+                                                                                                 pickled_scaler_folder=_model_folder)
 
     _config = model_config['tft_config']
 
@@ -82,12 +81,22 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
         batch_size = get_suggestion(trial.suggest_int, 'batch_size')
         dropout = get_suggestion(trial.suggest_float, 'dropout')
 
+        if _config['loss_fn'] == 'Custom':
+            weight_names = ['no_neg_pred_night', 'no_neg_pred_nonpv', 'morning_evening_peaks', 'air_co']
+            non_neg_pred_night = get_suggestion(trial.suggest_float, 'weights_no_neg_pred_night')
+            no_neg_pred_nonpv = get_suggestion(trial.suggest_float, 'weights_no_neg_pred_night')
+            morning_evening_peaks = get_suggestion(trial.suggest_float, 'weights_morning_evening_peaks')
+            air_co = get_suggestion(trial.suggest_float, 'weights_air_co')
+            weights = dict(zip(weight_names, [non_neg_pred_night, no_neg_pred_nonpv, morning_evening_peaks, air_co]))
+        else:
+            weights = {}
+
         use_static_covariates = trial.suggest_categorical("use_static_covariates", [True])
         add_relative_index = trial.suggest_categorical("add_relative_index", [False])
 
         match _config.get('loss_fn'):
             case 'Custom':
-                loss_fn = CustomLoss(TFT_MAPPING, WEIGHTS, {})
+                loss_fn = CustomLoss(TFT_MAPPING, weights, {})
                 # model_cls = ExtendedTFTModel
                 model = ExtendedTFTModel(
                     input_chunk_length=input_chunk_length,
@@ -149,14 +158,16 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
                               past_covariates=weather_actuals_ts,
                               future_covariates=weather_forecast_ts, n=output_chunk_length)
 
-        # smapes = smape(val_tss, preds, n_jobs=-1, verbose=True)
-        # smape_val = np.mean(smapes)
-        # r2s = r2_score(val_tss, preds, n_jobs=-1, verbose=True)
-        # r2_val = np.mean(r2s)
+        smapes = smape(val_tss, preds, n_jobs=-1, verbose=True)
+        smape_val = np.mean(smapes)
+        r2s = r2_score(val_tss, preds, n_jobs=-1, verbose=True)
+        r2_val = np.mean(r2s)
         rmses = rmse(val_tss, preds, n_jobs=-1, verbose=True)
         rmse_val = np.mean(rmses)
 
-        return rmse_val if rmse_val != np.nan else float("inf")
+        return rmse_val if rmse_val != np.nan else float("inf"), \
+               smape_val if smape_val != np.nan else float("inf"), \
+               r2_val if r2_val != np.nan else float("inf")
 
     study = optuna.create_study(study_name='test',
                                 direction="minimize",
@@ -212,3 +223,19 @@ if __name__ == "__main__":
         wad_files = [file.strip() for file in ','.join(args.weather_actuals_data).split(',')]
 
     main_optimize(smd_files, wfd_files, wad_files, model_config, path)
+
+     # testing multi-obejctive
+    # def objective(trial):
+    #     x = trial.suggest_float("x", -100, 100)
+    #     y = trial.suggest_categorical("y", [-1, 0, 1])
+    #     f1 = x ** 2 + y
+    #     f2 = -((x - 2) ** 2 + y)
+    #     return f1, f2
+    #
+    #
+    # # We minimize the first objective and maximize the second objective.
+    # sampler = optuna.samplers.RandomSampler()
+    # study = optuna.create_study(directions=["minimize", "maximize"], sampler=sampler)
+    # study.optimize(objective, n_trials=100, callbacks=[print_callback])
+
+
