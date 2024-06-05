@@ -328,7 +328,7 @@ if __name__ == "__main__":
                         help='String of space separated values for the weight initialization e.g. "1 0 0 0"')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     with open(args.model_configuration, 'r') as file:
         logging.info(f'Loading config from {args.model_configuration}')
@@ -341,6 +341,8 @@ if __name__ == "__main__":
     new_last_folder = f"{current_datetime}_{last_folder}"
     path = os.path.join(base_dir, new_last_folder)
     os.makedirs(path)
+    os.environ["MODEL_PATH"] = path
+
     logging.info(f"Saving everything related to this model training run at: {path}")
 
     smd_files, wfd_files, wad_files, weights = [], [], [], [0, 0, 0, 0]
