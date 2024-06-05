@@ -8,7 +8,7 @@
 #SBATCH --constraint=scratch-node
 #SBATCH --mail-type=BEGIN,END
 #SBATCH --mail-user=katrin.grunert@student.uva.nl
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --mem=16gb
 
 module load 2023
