@@ -5,7 +5,7 @@ model_class: 'TFT'
 run_with_validation: true
 gpu_enable: true
 trials: 100
-num_workers: 4
+num_workers: 8
 run_learning_rate_finder: false
 
 tft_config:
@@ -15,30 +15,30 @@ tft_config:
     increment: 0
   output_chunk_length: 96 #1*24 (one day)
   hidden_size:
-    start: 8
-    end: 32
-    increment: 8
-  hidden_continuous_size: #[16, 32, 64]
-    start: 2
-    end: 4
-    increment: 2
+    start: 30
+    end: 60
+    increment: 15
+  hidden_continuous_size:
+    start: 30
+    end: 60
+    increment: 15
   num_attention_heads:
-    start: 4
-    end: 8
-    increment: 4
+    start: 8
+    end: 16
+    increment: 8
   lstm_layers:
-    start: 4
-    end: 4
+    start: 8
+    end: 8
     increment: 0
   batch_size:
-    start: 32
-    end: 64
-    increment: 32
+    start: 64
+    end: 128
+    increment: 64
   n_epochs: 20
   dropout:
-    start: 0.2
-    end: 0.7
-    increment: 0.5
+    start: 0.5
+    end: 0.9
+    increment: 0.2
   use_static_covariates: [ true ]
   add_relative_index: [ false ]
   optimizer_kwargs:

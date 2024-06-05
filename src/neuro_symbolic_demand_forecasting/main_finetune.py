@@ -160,7 +160,8 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
 
     study = optuna.create_study(study_name='test',
                                 direction="minimize",
-                                sampler=RandomSampler())
+                                # sampler=RandomSampler()
+                                )
 
     # sadly we can only run one at a time?????
     study.optimize(objective, n_jobs=_full_config['num_workers'], n_trials=_full_config['trials'], callbacks=[print_callback])

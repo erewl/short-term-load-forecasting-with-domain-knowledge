@@ -4,12 +4,12 @@
 #SBATCH --gpus=1
 #SBATCH --job-name=FinetuneBaselineTFT
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --constraint=scratch-node
 #SBATCH --mail-type=BEGIN,END
 #SBATCH --mail-user=katrin.grunert@student.uva.nl
 #SBATCH --time=04:00:00
-#SBATCH --mem=16gb
+#SBATCH --mem=32gb
 
 module load 2023
 module load Python/3.11.3-GCCcore-12.3.0
