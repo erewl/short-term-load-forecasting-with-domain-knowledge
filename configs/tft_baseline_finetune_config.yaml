@@ -15,11 +15,11 @@ tft_config:
     increment: 0
   output_chunk_length: 96 #1*24 (one day)
   hidden_size:
-    start: 30
+    start: 45
     end: 60
     increment: 15
   hidden_continuous_size:
-    start: 30
+    start: 45
     end: 60
     increment: 15
   num_attention_heads:

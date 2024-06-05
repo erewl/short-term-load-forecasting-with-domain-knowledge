@@ -8,13 +8,14 @@ from typing import Sequence
 import torch
 import torch.nn as nn
 import numpy as np
-import optuna
+import optuna.pruners
 import yaml
 import datetime as dt
 import pytorch_lightning as pl
 from darts.metrics import smape, r2_score, rmse
 from darts.models import TFTModel
 from optuna_integration.pytorch_lightning import PyTorchLightningPruningCallback
+from pytorch_lightning.callbacks import EarlyStopping
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
@@ -46,11 +47,11 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
 
     def objective(trial) -> Sequence[float]:
 
-        pruning_callback = OptunaPruning(trial, monitor="val_loss")
+        # pruning_callback = OptunaPruning(trial, monitor="val_loss")
 
         trainer = pl.Trainer(
             max_epochs=_config['n_epochs'],
-            callbacks=[pruning_callback]
+            callbacks=[EarlyStopping("val_loss", min_delta=0.001, patience=5, verbose=True)]
         )
         num_workers = 0
         if torch.cuda.is_available() and _full_config['gpu_enable']:
@@ -59,9 +60,9 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
                 devices=[0],
                 accelerator='gpu',
                 max_epochs=_config['n_epochs'],
-                callbacks=[pruning_callback]
+                callbacks=[EarlyStopping("val_loss", min_delta=0.001, patience=5, verbose=True)]
             )
-            num_workers = 4
+            num_workers = _config['num_workers']
 
         def get_suggestion(suggest_fn, name):
             if _config[name]['increment'] == 0:
@@ -170,16 +171,16 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
                r2_val if r2_val != np.nan else float("inf")
 
     study = optuna.create_study(study_name='test',
-                                direction="minimize",
+                                # minimize rmse, and smape, maximize r2
+                                directions=["minimize", "minimize", "maximize"],
                                 # sampler=RandomSampler()
                                 )
 
     # sadly we can only run one at a time?????
     study.optimize(objective, n_jobs=_full_config['num_workers'], n_trials=_full_config['trials'], callbacks=[print_callback])
 
-    logging.info(f"Best params: {study.best_params}")
-    logging.info(f"Best value: {study.best_value}")
-    logging.info(f"Best Trial: {study.best_trial}")
+    logging.info(f"Best params: {[s.params for s in study.trials]}")
+    logging.info(f"Best value: {[s.values for s in study.trials]}")
     logging.info(f"Trials: {study.trials}")
 
     with open(f'{_model_folder}/study.pkl', 'wb') as f:
@@ -235,7 +236,7 @@ if __name__ == "__main__":
     #
     # # We minimize the first objective and maximize the second objective.
     # sampler = optuna.samplers.RandomSampler()
-    # study = optuna.create_study(directions=["minimize", "maximize"], sampler=sampler)
-    # study.optimize(objective, n_trials=100, callbacks=[print_callback])
+    # sstudy = optuna.create_study(directions=["minimize", "maximize"], sampler=sampler)
+    # sstudy.optimize(objective, n_trials=100, callbacks=[print_callback])
 
 
