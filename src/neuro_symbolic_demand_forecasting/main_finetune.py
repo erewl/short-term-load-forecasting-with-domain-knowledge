@@ -55,6 +55,7 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
         )
         num_workers = 0
         if torch.cuda.is_available() and _full_config['gpu_enable']:
+            logging.info("Running on GPU")
             torch.set_float32_matmul_precision('high')
             trainer = pl.Trainer(
                 devices=[0],
@@ -82,15 +83,15 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
         batch_size = get_suggestion(trial.suggest_int, 'batch_size')
         dropout = get_suggestion(trial.suggest_float, 'dropout')
 
+        weight_names = ['no_neg_pred_night', 'no_neg_pred_nonpv', 'morning_evening_peaks', 'air_co']
         if _config['loss_fn'] == 'Custom':
-            weight_names = ['no_neg_pred_night', 'no_neg_pred_nonpv', 'morning_evening_peaks', 'air_co']
             non_neg_pred_night = get_suggestion(trial.suggest_float, 'weights_no_neg_pred_night')
             no_neg_pred_nonpv = get_suggestion(trial.suggest_float, 'weights_no_neg_pred_night')
             morning_evening_peaks = get_suggestion(trial.suggest_float, 'weights_morning_evening_peaks')
             air_co = get_suggestion(trial.suggest_float, 'weights_air_co')
             weights = dict(zip(weight_names, [non_neg_pred_night, no_neg_pred_nonpv, morning_evening_peaks, air_co]))
         else:
-            weights = {}
+            weights = dict(zip(weight_names, [0, 0, 0, 0]))
 
         use_static_covariates = trial.suggest_categorical("use_static_covariates", [True])
         add_relative_index = trial.suggest_categorical("add_relative_index", [False])
