@@ -1,5 +1,6 @@
 import logging
-from typing import Tuple
+import os
+from typing import Tuple, Any
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,7 @@ from darts.models.forecasting.rnn_model import _RNNModule
 from darts.models.forecasting.tft_model import _TFTModule, TFTModel, MixedCovariatesTrainTensorType, logger
 from darts.models.forecasting.tft_submodels import get_embedding_size
 from darts.utils import torch
+from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import nn
 
 from neuro_symbolic_demand_forecasting.darts.loss import CustomPLModule
@@ -217,6 +219,32 @@ class ExtendedTFTModel(TFTModel):
 
 
 class _CustomTFTModule(_TFTModule, CustomPLModule):
+    # train_losses = []
+    # val_losses = []
+    # save_to_path = os.environ["MODEL_PATH"]
+    #
+    # def on_train_batch_end(self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int) -> None:
+    #     if batch_idx % 50 == 0:
+    #         loss = outputs['loss'].item()
+    #         self.train_losses.append(loss)
+    #         logging.debug(f'Batch {batch_idx}, Training Loss: {loss}')
+    #
+    # def on_validation_batch_end(
+    #         self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, dataloader_idx: int = 0
+    # ) -> None:
+    #     logging.info(f"Validationoutput {outputs}")
+    #     if batch_idx % 50 == 0 and batch_idx > 0:
+    #         loss = outputs['loss'].item()
+    #         self.val_losses.append(loss)
+    #         logging.debug(f'Batch {batch_idx}, Validation Loss: {loss}')
+    #
+    # def on_fit_end(self) -> None:
+    #     import csv
+    #     with open("/filepath",'wb') as f:
+    #         writer = csv.writer(f)
+    #         writer.writerow(['loss', 'age'])
+    #         writer.writerow(['John Doe', 30])
+
     def training_step(self, train_batch, batch_idx):
         # Call the training_step method from _CustomPLModule
         logging.debug("Delegating training_step")
