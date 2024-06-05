@@ -62,7 +62,7 @@ def main_optimize(smart_meter_files: list[str], weather_forecast_files: list[str
                 max_epochs=_config['n_epochs'],
                 callbacks=[EarlyStopping("val_loss", min_delta=0.001, patience=5, verbose=True)]
             )
-            num_workers = _config['num_workers']
+            num_workers = _full_config['num_workers']
 
         def get_suggestion(suggest_fn, name):
             if _config[name]['increment'] == 0:
