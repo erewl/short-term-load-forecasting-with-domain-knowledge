@@ -76,7 +76,7 @@ def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]
     return pl_trainer_kwargs, num_workers
 
 
-def _init_model(_model_config: dict, weights: Dict[str, float], callbacks: List[Callback], optimizer_kwargs=None):
+def _init_model(_model_config: dict, _weights: Dict[str, float], callbacks: List[Callback], optimizer_kwargs=None):
     # throughout training we'll monitor the validation loss for early stopping
     pl_trainer_kwargs, num_workers = get_trainer_kwargs(_model_config, callbacks)
     encoders = create_encoders(_model_config['model_class'])
@@ -89,10 +89,11 @@ def _init_model(_model_config: dict, weights: Dict[str, float], callbacks: List[
             logging.info(f"Initiating the Temporal Fusion Transformer with these arguments: \n {tft_config}")
             if tft_config['loss_fn'] and tft_config['loss_fn'] == 'Custom':
                 logging.info("Using TFTModel with Custom Module for custom Loss")
+                logging.info(f"Initializing loss with these weights: {_weights}")
                 return ExtendedTFTModel(
                     input_chunk_length=tft_config['input_chunk_length'],
                     output_chunk_length=tft_config['output_chunk_length'],
-                    loss_fn=CustomLoss(TFT_MAPPING, weights, {}),  # custom loss here
+                    loss_fn=CustomLoss(TFT_MAPPING, _weights, {}),  # custom loss here
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
@@ -120,7 +121,7 @@ def _init_model(_model_config: dict, weights: Dict[str, float], callbacks: List[
                 logging.info("Using LSTM with Custom Module for custom Loss")
                 return ExtendedRNNModel(
                     model="LSTM",
-                    loss_fn=CustomLoss(LSTM_MAPPING, weights, thresholds={}),  # custom loss here
+                    loss_fn=CustomLoss(LSTM_MAPPING, _weights, thresholds={}),  # custom loss here
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
@@ -208,7 +209,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                                                                                  add_static_covariates=True,
                                                                                                  pickled_scaler_folder=_path)
     # training
-    model = _init_model(model_config, _weights,[], {})
+    model = _init_model(model_config, _weights, [], {})
 
     logging.info("Initialized model, beginning with fitting...")
 
@@ -281,7 +282,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                         past_covariates=weather_actuals_ts,
                                         future_covariates=weather_forecast_ts)
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, weights=_weights,callbacks=[],
+                model = _init_model(model_config, weights=_weights, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
             model.fit(
@@ -296,7 +297,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 results = model.lr_find(series=smart_meter_tss,
                                         future_covariates=weather_forecast_ts)
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, weights=_weights,callbacks=[],
+                model = _init_model(model_config, weights=_weights, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
             model.fit(
