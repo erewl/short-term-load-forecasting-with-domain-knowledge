@@ -23,4 +23,4 @@ tft_config:
     lr: 0.001
   random_state: 42
   save_checkpoints: true
-  loss_fn: "MSE" # else MSE or similar metrics
+  loss_fn: "Custom" # else MSE or similar metrics

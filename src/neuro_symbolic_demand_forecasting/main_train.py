@@ -237,7 +237,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                         val_future_covariates=weather_forecast_ts
                                         )
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, weights=_weights, callbacks=[],
+                model = _init_model(model_config, _weights=_weights, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
 
@@ -261,7 +261,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                         )
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
                 # re-initialzing model with updated learning params
-                model = _init_model(model_config, weights=_weights, callbacks=[],
+                model = _init_model(model_config, _weights=_weights, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})
 
@@ -282,7 +282,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                         past_covariates=weather_actuals_ts,
                                         future_covariates=weather_forecast_ts)
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, weights=_weights, callbacks=[],
+                model = _init_model(model_config, _weights=_weights, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
             model.fit(
@@ -297,7 +297,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 results = model.lr_find(series=smart_meter_tss,
                                         future_covariates=weather_forecast_ts)
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, weights=_weights, callbacks=[],
+                model = _init_model(model_config, _weights=_weights, callbacks=[],
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
             model.fit(
