@@ -15,7 +15,7 @@ from darts.dataprocessing.transformers import Scaler
 from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import EarlyStopping
 
-from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel, ExtendedRNNModel
+from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel, ExtendedRNNModel, LossCurveCallback
 from neuro_symbolic_demand_forecasting.darts.loss import CustomLoss
 
 from sklearn.preprocessing import MinMaxScaler
@@ -209,7 +209,8 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                                                                                  add_static_covariates=True,
                                                                                                  pickled_scaler_folder=_path)
     # training
-    model = _init_model(model_config, _weights, [], {})
+    cbs = [LossCurveCallback(_path)]
+    model = _init_model(model_config, _weights, cbs, {})
 
     logging.info("Initialized model, beginning with fitting...")
 

@@ -10,6 +10,8 @@ from darts.models.forecasting.rnn_model import _RNNModule
 from darts.models.forecasting.tft_model import _TFTModule, TFTModel, MixedCovariatesTrainTensorType, logger
 from darts.models.forecasting.tft_submodels import get_embedding_size
 from darts.utils import torch
+import pytorch_lightning as pl
+from pytorch_lightning import Callback
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import nn
 
@@ -249,3 +251,58 @@ class _CustomTFTModule(_TFTModule, CustomPLModule):
         # Call the training_step method from _CustomPLModule
         logging.debug("Delegating training_step")
         return CustomPLModule.training_step(self, train_batch, batch_idx)
+
+
+class LossCurveCallback(Callback):
+    """
+    Callback to store the loss values to a file for further evaluation
+    """
+
+    def __init__(self, folder: str, nth_batch: int = 1):
+        self.folder = folder
+        self.nth_batch = nth_batch
+
+    train_losses = {}
+    val_losses = {}
+
+    # def on_train_batch_end(self, outputs: STEP_OUTPUT, batch: Any, batch_idx: int) -> None:
+    #     if batch_idx % 50 == 0:
+    #         loss = outputs['loss'].item()
+    #         self.train_losses.append(loss)
+    #         logging.debug(f'Batch {batch_idx}, Training Loss: {loss}')
+    def on_train_batch_end(
+            self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", outputs: STEP_OUTPUT, batch: Any,
+            batch_idx: int
+    ) -> None:
+        if batch_idx % self.nth_batch == 0:
+            loss = outputs['loss'].item()
+            self.train_losses[f'{trainer.current_epoch}.{batch_idx}'] = loss
+            logging.debug(f'Batch {batch_idx}, Training Loss: {loss}')
+
+    def on_validation_batch_end(
+            self,
+            trainer: "pl.Trainer",
+            pl_module: "pl.LightningModule",
+            outputs: STEP_OUTPUT,
+            batch: Any,
+            batch_idx: int,
+            dataloader_idx: int = 0,
+    ) -> None:
+        if batch_idx % self.nth_batch == 0:
+            loss = outputs.item()
+            self.val_losses[trainer.current_epoch] = loss
+            logging.debug(f'Batch {batch_idx}, Validation Loss: {loss}')
+
+    def on_fit_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+        import csv
+        with open(f"{self.folder}/train_losses.csv", 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(['batch', 'loss'])
+            rows = [[i, j] for i, j in self.train_losses.items()]
+            writer.writerows(rows)
+
+        with open(f"{self.folder}/val_losses.csv", 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(['batch', 'loss'])
+            rows = [[i, j] for i, j in self.val_losses.items()]
+            writer.writerows(rows)
