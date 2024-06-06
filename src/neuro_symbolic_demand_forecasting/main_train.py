@@ -342,7 +342,7 @@ if __name__ == "__main__":
     base_dir, last_folder = os.path.split(args.save_model_as)
     new_last_folder = f"{current_datetime}_{last_folder}"
     path = os.path.join(base_dir, new_last_folder)
-    os.makedirs(path)
+    os.makedirs(path, exist_ok=True)
     os.environ["MODEL_PATH"] = path
 
     logging.info(f"Saving everything related to this model training run at: {path}")
