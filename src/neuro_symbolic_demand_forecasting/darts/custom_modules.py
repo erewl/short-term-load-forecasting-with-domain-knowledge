@@ -263,6 +263,7 @@ class EarlyStoppingAfterNthEpoch(EarlyStopping):
 
     def on_validation_end(self, trainer, pl_module):
         logging.info(self.best_score)
+        logging.info(self.state_dict())
         if trainer.current_epoch >= self.start_epoch:
             self._run_early_stopping_check(trainer)
         else:
