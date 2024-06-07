@@ -258,7 +258,8 @@ class _CustomTFTModule(_TFTModule, CustomPLModule):
 class EarlyStoppingAfterNthEpoch(EarlyStopping):
     def __init__(self, monitor: str, min_delta: float, patience: int, verbose: bool, start_epoch: int):
         self.start_epoch = start_epoch
-        super(EarlyStopping, self).__init__(monitor, min_delta, patience, verbose)
+        super(EarlyStoppingAfterNthEpoch, self).__init__(monitor=monitor, min_delta=min_delta, patience=patience,
+                                                         verbose=verbose)
 
     def on_validation_end(self, trainer, pl_module):
         logging.info(self.best_score)
