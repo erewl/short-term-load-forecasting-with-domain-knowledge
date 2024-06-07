@@ -53,38 +53,53 @@ def main_evaluate(_config: dict, start_date: str, end_date: str,
         scaled_weather_actuals = weather_actuals_scaler.transform(wa_ts)
         scaled_weather_forecasts = weather_forecast_scaler.transform(wf_ts)
 
-        metrics = pd.DataFrame()
-        ts: Optional[TimeSeries] = None
+        scaled_inputs = []
+        scaled_actualss = []
+        dates = []
         for d in pd.date_range(start_date, end_date):  # could also be pass as an array of timeseries to the model.
             input_start, input_end = d - dt.timedelta(days=7), d - dt.timedelta(minutes=15)
             scaled_input = scaled_smart_meter_ts[input_start:input_end]
-            logging.info(f"Length: {len(scaled_input)}")
             forecast_start, forecast_end = d, d + dt.timedelta(days=1) - dt.timedelta(minutes=15)
-            logging.info(f"Using {input_start} to {input_end} to forecast {forecast_start} to {forecast_end}")
+            logging.info(
+                f"Using {input_start} to {input_end} to forecast {forecast_start} to {forecast_end}, Length: {len(scaled_input)}")
             scaled_actuals = scaled_smart_meter_ts[forecast_start:forecast_end]
-            scaled_predictions = model.predict(
-                n=model.output_chunk_length,
-                series=scaled_input,
-                past_covariates=scaled_weather_actuals,
-                future_covariates=scaled_weather_forecasts
-            )
-            rescaled_predictions = scaler.inverse_transform(scaled_predictions).with_columns_renamed('gross',
-                                                                                                     'gross_predicted')
-            rescaled_actuals = scaler.inverse_transform(scaled_actuals).with_columns_renamed('gross', 'gross_actuals')
 
-            subset_prices = prices[rescaled_predictions.time_index.min():rescaled_predictions.time_index.max()]
-            day_metrics = get_metrics(rescaled_actuals, rescaled_predictions, subset_prices)
+            dates.append(d)
+            scaled_inputs.append(scaled_input)
+            scaled_actualss.append(scaled_actuals)
+
+        scaled_predictions = model.predict(
+            n=model.output_chunk_length,
+            series=scaled_inputs,
+            past_covariates=scaled_weather_actuals * len(scaled_inputs),
+            future_covariates=scaled_weather_forecasts * len(scaled_inputs),
+            n_jobs=5,
+            num_loader_workers=5
+        )
+
+        rescaled_predictions = [scaler.inverse_transform(sp).with_columns_renamed(
+            'gross', 'gross_predicted') for sp in scaled_predictions]
+        rescaled_actuals = [scaler.inverse_transform(sa).with_columns_renamed(
+            'gross', 'gross_actuals') for sa in scaled_actualss]
+
+        # subset_prices = prices[rescaled_predictions.time_index.min():rescaled_predictions.time_index.max()]
+
+        metrics = pd.DataFrame()
+        ts: Optional[TimeSeries] = None
+
+        for d, predicted, actuals in zip(dates, rescaled_predictions, rescaled_actuals):
+            day_metrics = get_metrics(actuals, predicted)
             day_metrics['date'] = d
             metrics = pd.concat([metrics, pd.DataFrame([day_metrics])])
 
             if ts is None:
-                ts = rescaled_predictions.stack(rescaled_actuals)
+                ts = predicted.stack(actuals)
             else:
-                ts = ts.append(rescaled_predictions.stack(rescaled_actuals))
+                ts = ts.append(predicted.stack(actuals))
 
-        subset_prices = prices[ts.time_index.min():ts.time_index.max()]
+        # subset_prices = prices[ts.time_index.min():ts.time_index.max()]
         logging.info("Total metrics:")
-        total_metrics = get_metrics(ts['gross_actuals'], ts['gross_predicted'], subset_prices)
+        total_metrics = get_metrics(ts['gross_actuals'], ts['gross_predicted'])
         total_metrics['date'] = 'full'
 
         metrics = pd.concat([metrics, pd.DataFrame([total_metrics])])
@@ -112,14 +127,20 @@ def _compute_imbalance_result(_target, _predicted, _prices):
     return ib_result
 
 
-def get_metrics(_target, _predicted, _prices):
+def _compute_imbalance_volumes(_target, _predicted):
+    # sum( | y - y(hat) |) / sum( | y |) *100(
+    return np.sum(np.abs((_target - _predicted).values())) / \
+           np.sum(np.abs(_target.values())) * 100
+
+
+def get_metrics(_target, _predicted):
     smape_ = smape(_target, _predicted)
     mape_ = mape(_target, _predicted)
     mae_ = mae(_target, _predicted)
     # wape_ = (_target - _predicted).abs().sum() / _target.sum()
     rmse_ = rmse(_target, _predicted)
     r2_ = r2_score(_target, _predicted)
-    imbalance = _compute_imbalance_result(_target, _predicted, _prices)
+    imbalance = _compute_imbalance_volumes(_target, _predicted)
 
     metrics = {
         'sMAPE': round(smape_, 3),
@@ -128,10 +149,11 @@ def get_metrics(_target, _predicted, _prices):
         'MAE': round(mae_, 3),
         'RMSE': round(rmse_, 3),
         'R2': round(r2_, 3),
-        'Imbalance': round(imbalance.sum(), 3)
+        'Imbalance': round(imbalance, 3)
     }
 
     logging.info('\n'.join([f"{k}: {v} " for k, v in metrics.items()]))
+    print()
     return metrics
 
 
