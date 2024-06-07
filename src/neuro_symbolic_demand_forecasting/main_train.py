@@ -55,12 +55,6 @@ def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSerie
 
 
 def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]:
-    early_stopper = EarlyStopping("val_loss", min_delta=0.00001, patience=10, verbose=True)
-    if len(callbacks) == 0:
-        callbacks = [early_stopper]
-    else:
-        callbacks.append(early_stopper)
-
     # detect if a GPU is available
     if torch.cuda.is_available() and _model_config['gpu_enable']:
         torch.set_float32_matmul_precision('high')
@@ -209,7 +203,8 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                                                                                  add_static_covariates=True,
                                                                                                  pickled_scaler_folder=_path)
     # training
-    cbs = [LossCurveCallback(_path)]
+    early_stopper = EarlyStopping("val_loss", min_delta=0.00001, patience=10, verbose=True)
+    cbs = [LossCurveCallback(_path), early_stopper]
     model = _init_model(model_config, _weights, cbs, {})
 
     logging.info("Initialized model, beginning with fitting...")
@@ -238,7 +233,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                         val_future_covariates=weather_forecast_ts
                                         )
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, _weights=_weights, callbacks=[],
+                model = _init_model(model_config, _weights=_weights, callbacks=cbs,
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
 
@@ -262,7 +257,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                         )
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
                 # re-initialzing model with updated learning params
-                model = _init_model(model_config, _weights=_weights, callbacks=[],
+                model = _init_model(model_config, _weights=_weights, callbacks=cbs,
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})
 
@@ -283,7 +278,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                         past_covariates=weather_actuals_ts,
                                         future_covariates=weather_forecast_ts)
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, _weights=_weights, callbacks=[],
+                model = _init_model(model_config, _weights=_weights, callbacks=cbs,
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
             model.fit(
@@ -298,7 +293,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                 results = model.lr_find(series=smart_meter_tss,
                                         future_covariates=weather_forecast_ts)
                 logging.info(f"Suggested Learning rate: {results.suggestion()}")
-                model = _init_model(model_config, _weights=_weights, callbacks=[],
+                model = _init_model(model_config, _weights=_weights, callbacks=cbs,
                                     optimizer_kwargs={
                                         'lr': results.suggestion()})  # re-initialzing model with updated learning params
             model.fit(
