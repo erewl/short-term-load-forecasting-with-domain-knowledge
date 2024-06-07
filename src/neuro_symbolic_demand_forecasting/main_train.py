@@ -14,6 +14,7 @@ from darts.models import RNNModel, TFTModel
 from darts.dataprocessing.transformers import Scaler
 from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import EarlyStopping
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel, ExtendedRNNModel, \
     LossCurveCallback, EarlyStoppingAfterNthEpoch
@@ -75,7 +76,13 @@ def _init_model(_model_config: dict, _weights: Dict[str, float], callbacks: List
     # throughout training we'll monitor the validation loss for early stopping
     pl_trainer_kwargs, num_workers = get_trainer_kwargs(_model_config, callbacks)
     encoders = create_encoders(_model_config['model_class'])
-
+    lr_scheduler_kwargs = {
+        'mode': 'min',
+        'factor': 0.1,
+        'patience': 10,
+        'threshold': 0.0001,
+        'threshold_mode': 'abs'
+    }
     match _model_config['model_class']:
         case "TFT":
             tft_config: dict = _model_config['tft_config']
@@ -90,6 +97,8 @@ def _init_model(_model_config: dict, _weights: Dict[str, float], callbacks: List
                     output_chunk_length=tft_config['output_chunk_length'],
                     loss_fn=CustomLoss(TFT_MAPPING, _weights, {}),  # custom loss here
                     optimizer_kwargs=optimizer_kwargs,
+                    lr_scheduler_cls=ReduceLROnPlateau,
+                    lr_scheduler_kwargs=lr_scheduler_kwargs,
                     add_encoders=encoders,
                     pl_trainer_kwargs=pl_trainer_kwargs,
                     **{k: v for k, v in tft_config.items() if
@@ -102,8 +111,11 @@ def _init_model(_model_config: dict, _weights: Dict[str, float], callbacks: List
                     output_chunk_length=tft_config['output_chunk_length'],
                     optimizer_kwargs=optimizer_kwargs,
                     add_encoders=encoders,
+                    lr_scheduler_cls=ReduceLROnPlateau,
+                    lr_scheduler_kwargs=lr_scheduler_kwargs,
                     loss_fn=nn.MSELoss(),
                     pl_trainer_kwargs=pl_trainer_kwargs,
+
                     **{k: v for k, v in tft_config.items() if
                        k not in ['input_chunk_length', 'output_chunk_length', 'optimizer_kwargs', 'loss_fn']}
                 )
@@ -204,7 +216,8 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                                                                                  add_static_covariates=True,
                                                                                                  pickled_scaler_folder=_path)
     # training
-    early_stopper = EarlyStoppingAfterNthEpoch(monitor="val_loss", min_delta=0.001, patience=10, verbose=True, start_epoch=1)
+    early_stopper = EarlyStoppingAfterNthEpoch(monitor="val_loss", min_delta=0.001, patience=10, verbose=True,
+                                               start_epoch=1)
     cbs = [LossCurveCallback(_path), early_stopper]
     model = _init_model(model_config, _weights, cbs, {})
 
