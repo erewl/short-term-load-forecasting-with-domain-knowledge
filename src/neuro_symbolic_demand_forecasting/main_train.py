@@ -308,9 +308,11 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
             )
         else:
             raise Exception(f'Training for other models not implemented yet')
-
     logging.info(f"Saving model at {_path}/trained_model.pkl")
     model.save(f'{_path}/train_model.pkl')
+    logging.info("loading and saving the best performed model:")
+    model_best = model.load_from_checkpoint(model_name=model.model_name, best=True)
+    model_best.save(f'{_path}/best_train_model.pkl')
 
 
 if __name__ == "__main__":
