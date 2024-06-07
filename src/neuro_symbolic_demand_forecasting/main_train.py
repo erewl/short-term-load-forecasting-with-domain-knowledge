@@ -55,7 +55,7 @@ def _adjust_start_date(sm_ts: TimeSeries, min_weather, min_actuals) -> TimeSerie
 
 
 def get_trainer_kwargs(_model_config: dict, callbacks: list) -> Tuple[dict, int]:
-    early_stopper = EarlyStopping("val_loss", min_delta=0.0001, patience=10, verbose=True)
+    early_stopper = EarlyStopping("val_loss", min_delta=0.00001, patience=10, verbose=True)
     if len(callbacks) == 0:
         callbacks = [early_stopper]
     else:
