@@ -80,7 +80,8 @@ def _init_model(_model_config: dict, _weights: Dict[str, float], callbacks: List
         'factor': 0.1,
         'patience': 10,
         'threshold': 0.0001,
-        'threshold_mode': 'abs'
+        'threshold_mode': 'abs',
+        'verbose': True
     }
     match _model_config['model_class']:
         case "TFT":
@@ -216,7 +217,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                                                                                  pickled_scaler_folder=_path)
     # training
     early_stopper = EarlyStoppingAfterNthEpoch(monitor="val_loss", min_delta=0.001, patience=10, verbose=True,
-                                               start_epoch=1)
+                                               start_epoch=2)
     cbs = [LossCurveCallback(_path), early_stopper]
     model = _init_model(model_config, _weights, cbs, {})
 
