@@ -13,7 +13,6 @@ from darts import TimeSeries
 from darts.models import RNNModel, TFTModel
 from darts.dataprocessing.transformers import Scaler
 from pytorch_lightning import Callback
-from pytorch_lightning.callbacks import EarlyStopping
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel, ExtendedRNNModel, \

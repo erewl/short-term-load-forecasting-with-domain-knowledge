@@ -15,6 +15,7 @@ from pytorch_lightning import Callback
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import nn
+import torch
 
 from neuro_symbolic_demand_forecasting.darts.loss import CustomPLModule
 
@@ -263,8 +264,9 @@ class EarlyStoppingAfterNthEpoch(EarlyStopping):
         if trainer.current_epoch >= self.start_epoch:
             self._run_early_stopping_check(trainer)
         else:
-            self.best_score = 1
-            logging.info(f"Skipping epoch {trainer.current_epoch} for the early stopping check, starting after {self.start_epoch} >:D")
+            self.best_score = torch.tensor(1)  # just setting something arbitrary high
+            logging.info(
+                f"Skipping epoch {trainer.current_epoch} for the early stopping check, starting after {self.start_epoch} >:D")
 
     # def on_train_end(self, trainer, pl_module):
     #     # instead, do it at the end of training loop
