@@ -113,12 +113,16 @@ class CustomLoss(nn.Module):
         if type(target) == tuple:
             self.print_debugs(target)
             # no negative predictions at night
-            penalty_term_no_production_at_night = self._get_loss_for_night(output, target)
+            if self.weights['no_neg_pred_night'] > 0:
+                penalty_term_no_production_at_night = self._get_loss_for_night(output, target)
             # no negative predictions for non_pv timeseries
-            penalty_non_pv_negative_predictions = self._get_loss_for_non_pv(output, target)
+            if self.weights['no_neg_pred_nonpv'] > 0:
+                penalty_non_pv_negative_predictions = self._get_loss_for_non_pv(output, target)
             # special attention to peak hours (morning and evenings)
-            penalty_term_morning_evening_peaks = self._get_loss_for_peaks(output, target)
-            penalty_term_air_co_on_humid_summer_days = self._get_loss_for_airco_usage(output, target)
+            if self.weights['morning_evening_peaks'] > 0:
+                penalty_term_morning_evening_peaks = self._get_loss_for_peaks(output, target)
+            if self.weights['air_co'] > 0:
+                penalty_term_air_co_on_humid_summer_days = self._get_loss_for_airco_usage(output, target)
 
         logging.debug(
             f"Lossterms: {loss} + {penalty_term_no_production_at_night} + {penalty_non_pv_negative_predictions} + {penalty_term_air_co_on_humid_summer_days} + {penalty_term_morning_evening_peaks}")

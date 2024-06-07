@@ -216,8 +216,8 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                                                                                  add_static_covariates=True,
                                                                                                  pickled_scaler_folder=_path)
     # training
-    early_stopper = EarlyStoppingAfterNthEpoch(monitor="val_loss", min_delta=0.001, patience=10, verbose=True,
-                                               start_epoch=2)
+    early_stopper = EarlyStoppingAfterNthEpoch(monitor="val_loss", min_delta=0.001, patience=37, verbose=True,
+                                               start_epoch=3)
     cbs = [LossCurveCallback(_path), early_stopper]
     model = _init_model(model_config, _weights, cbs, {})
 
