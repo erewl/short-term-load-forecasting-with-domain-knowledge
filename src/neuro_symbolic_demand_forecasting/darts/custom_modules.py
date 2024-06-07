@@ -12,6 +12,7 @@ from darts.models.forecasting.tft_submodels import get_embedding_size
 from darts.utils import torch
 import pytorch_lightning as pl
 from pytorch_lightning import Callback
+from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import nn
 
@@ -251,6 +252,22 @@ class _CustomTFTModule(_TFTModule, CustomPLModule):
         # Call the training_step method from _CustomPLModule
         logging.debug("Delegating training_step")
         return CustomPLModule.training_step(self, train_batch, batch_idx)
+
+
+class EarlyStoppingAfterNthEpoch(EarlyStopping):
+    def __init__(self, monitor: str, min_delta: float, patience: int, verbose: bool, start_epoch: int):
+        self.start_epoch = start_epoch
+        super(EarlyStoppingAfterNthEpoch, self).__init__(monitor, min_delta, patience, verbose)
+
+    def on_validation_end(self, trainer, pl_module):
+        if trainer.current_epoch >= self.start_epoch:
+            self._run_early_stopping_check(trainer)
+        else:
+            logging.info(f"Skipping epoch {trainer.current_epoch} for the early stopping check, starting after {self.start_epoch} >:D")
+
+    # def on_train_end(self, trainer, pl_module):
+    #     # instead, do it at the end of training loop
+    #     # self._run_early_stopping_check(trainer)
 
 
 class LossCurveCallback(Callback):
