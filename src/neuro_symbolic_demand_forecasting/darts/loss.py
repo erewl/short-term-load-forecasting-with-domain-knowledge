@@ -115,6 +115,7 @@ class CustomLoss(nn.Module):
         real_target = target[-1]  # last element is the target element
 
         loss = torch.mean((output - real_target) ** 2)
+
         # for PTUs that are between sunset and sunrise penalize negative predictions
         penalty_term_no_production_at_night = 0
         # for PTUs in the morning and evening peaks we want to penalize errors in any direction
