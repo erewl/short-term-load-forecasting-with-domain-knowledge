@@ -1,5 +1,6 @@
+import csv
 import logging
-from typing import Any
+import os
 
 import pandas as pd
 import torch
@@ -13,20 +14,47 @@ class CustomPLModule(pl.LightningModule):
     of the training batch are passed into the loss function
     """
 
+    val_losses = []
+    train_losses = []
+    weight_names = ['total', 'mse', 'no_neg_pred_night', 'no_neg_pred_nonpv', 'morning_evening_peaks', 'air_co']
+
+    def __init__(self):
+        self.model_path = os.getenv('MODEL_PATH', '')
+
+        super(CustomPLModule, self).__init__()
+
+    def on_fit_end(self) -> None:
+        logging.info(self.model_path)
+        if self.model_path is not '':
+            with open(f"{self.model_path}/all_val_losses.csv", 'w') as f:
+                writer = csv.writer(f)
+                val_loss = [v.item() for v in self.val_losses]
+                writer.writerow(self.weight_names)
+                writer.writerows(val_loss)
+
+            with open(f"{self.model_path}/all_train_losses.csv", 'w') as f:
+                writer = csv.writer(f)
+                writer.writerow(self.weight_names)
+                train_loss = [t.item() for t in self.train_losses]
+                writer.writerows(train_loss)
+
     def validation_step(self, val_batch, batch_idx) -> torch.Tensor:
         """performs the validation step"""
         output = self._produce_train_output(val_batch[:-1])
         target = val_batch[-1]
         loss = self._compute_loss(output, val_batch)
+        self.val_losses.append(loss)
+        total_loss = sum(loss)
+
         self.log(
             "val_loss",
-            loss,
+            total_loss,
             batch_size=val_batch[0].shape[0],
             prog_bar=True,
             sync_dist=True,
         )
         self._calculate_metrics(output, target, self.val_metrics)
-        return loss
+        return total_loss
 
     def training_step(self, train_batch, batch_idx) -> torch.Tensor:
         """performs the training step"""
@@ -49,15 +77,20 @@ class CustomPLModule(pl.LightningModule):
         #             f"debug_03/{batch_idx}_encoded_batch_0{i}_tensor_0{j}_slice.csv", index=False)
         # raise Exception("jKFJSDKLFJDKL")
         loss = self._compute_loss(output, train_batch)
+
+        self.train_losses.append(loss)
+
+        total_loss = sum(loss)
+
         self.log(
             "train_loss",
-            loss,
+            total_loss,
             batch_size=train_batch[0].shape[0],
             prog_bar=True,
             sync_dist=True,
         )
         self._calculate_metrics(output, target, self.train_metrics)
-        return loss
+        return total_loss
 
 
 class CustomLoss(nn.Module):
@@ -75,6 +108,7 @@ class CustomLoss(nn.Module):
         self.feature_mappings = feature_mappings
         self.weights = weights
         self.thresholds = thresholds
+
         super(CustomLoss, self).__init__()
 
     def _get_loss_for_night(self, output, target):
@@ -129,26 +163,35 @@ class CustomLoss(nn.Module):
         # no negative predictions at night
         if self.weights['no_neg_pred_night'] > 0:
             penalty_term_no_production_at_night = self._get_loss_for_night(output, target)
+            penalty_term_no_production_at_night *= self.weights['no_neg_pred_night']
         # no negative predictions for non_pv timeseries
         if self.weights['no_neg_pred_nonpv'] > 0:
             penalty_non_pv_negative_predictions = self._get_loss_for_non_pv(output, target)
+            penalty_non_pv_negative_predictions *= self.weights['no_neg_pred_nonpv']
         # special attention to peak hours (morning and evenings)
         if self.weights['morning_evening_peaks'] > 0:
             penalty_term_morning_evening_peaks = self._get_loss_for_peaks(output, target)
+            penalty_term_morning_evening_peaks *= self.weights['morning_evening_peaks']
         if self.weights['air_co'] > 0:
             penalty_term_air_co_on_humid_summer_days = self._get_loss_for_airco_usage(output, target)
+            penalty_term_air_co_on_humid_summer_days *= self.weights['air_co']
 
         sum_ = loss + \
-               self.weights['no_neg_pred_night'] * penalty_term_no_production_at_night + \
-               self.weights['no_neg_pred_nonpv'] * penalty_non_pv_negative_predictions + \
-               self.weights['morning_evening_peaks'] * penalty_term_morning_evening_peaks + \
-               self.weights['air_co'] * penalty_term_air_co_on_humid_summer_days
+               penalty_term_no_production_at_night + \
+               penalty_non_pv_negative_predictions + \
+               penalty_term_morning_evening_peaks + \
+               penalty_term_air_co_on_humid_summer_days
 
         logging.debug(
             f"Lossterms with weights: {loss} "
-            f"+ {self.weights['no_neg_pred_night'] * penalty_term_no_production_at_night} "
-            f"+ {self.weights['no_neg_pred_nonpv'] * penalty_non_pv_negative_predictions} "
-            f"+ {self.weights['morning_evening_peaks'] * penalty_term_morning_evening_peaks}"
-            f"+ {self.weights['air_co'] * penalty_term_air_co_on_humid_summer_days}"
+            f"+ {penalty_term_no_production_at_night} "
+            f"+ {penalty_non_pv_negative_predictions} "
+            f"+ {penalty_term_morning_evening_peaks}"
+            f"+ {penalty_term_air_co_on_humid_summer_days}"
             f"= {sum_}")
-        return sum_
+        return [sum_,
+                loss,
+                penalty_term_no_production_at_night,
+                penalty_non_pv_negative_predictions,
+                penalty_term_morning_evening_peaks,
+                penalty_term_air_co_on_humid_summer_days]

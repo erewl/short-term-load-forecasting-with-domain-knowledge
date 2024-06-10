@@ -126,7 +126,7 @@ class PartOfDayEncoder:
         sunrise = sun_info['sunrise'].astimezone(self.timezone)
         sunset = sun_info['sunset'].astimezone(self.timezone).time()
 
-        morning_start = (sunrise - dt.timedelta(hours=2)).time()
+        morning_start = (sunrise - dt.timedelta(hours=0)).time()
         if timestamp.time() < morning_start or timestamp.time() > sunset:
             return 0  # Night
         elif morning_start <= timestamp.time() < dt.time(10, 0, 0):
