@@ -4,7 +4,7 @@ weather_actuals_features: [ 'wind_speed', 'global_radiation', 'air_pressure', 'a
 model_class: 'TFT'
 run_with_validation: true
 gpu_enable: true
-run_learning_rate_finder: true
+run_learning_rate_finder: false
 
 # from "Application of Temporal Fusion Transformer for Day-Ahead PV Power Forecasting"
 tft_config:
@@ -20,7 +20,7 @@ tft_config:
   use_static_covariates: true
   add_relative_index: false
   optimizer_kwargs:
-    lr: 0.001
+    lr: 0.006918309709189364
   random_state: 42
   save_checkpoints: true
   loss_fn: "Custom" # else MSE or similar metrics
