@@ -341,7 +341,7 @@ if __name__ == "__main__":
                         help='String of space separated values for the weight initialization e.g. "1 0 0 0"')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
 
     with open(args.model_configuration, 'r') as file:
         logging.info(f'Loading config from {args.model_configuration}')
