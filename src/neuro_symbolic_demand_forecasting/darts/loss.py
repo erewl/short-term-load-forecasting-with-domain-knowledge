@@ -5,7 +5,6 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from pytorch_lightning.utilities.types import STEP_OUTPUT
 
 
 class CustomPLModule(pl.LightningModule):
@@ -13,6 +12,21 @@ class CustomPLModule(pl.LightningModule):
     This Module ensures that not only the target tensor but also the input tensors
     of the training batch are passed into the loss function
     """
+
+    def validation_step(self, val_batch, batch_idx) -> torch.Tensor:
+        """performs the validation step"""
+        output = self._produce_train_output(val_batch[:-1])
+        target = val_batch[-1]
+        loss = self._compute_loss(output, val_batch)
+        self.log(
+            "val_loss",
+            loss,
+            batch_size=val_batch[0].shape[0],
+            prog_bar=True,
+            sync_dist=True,
+        )
+        self._calculate_metrics(output, target, self.val_metrics)
+        return loss
 
     def training_step(self, train_batch, batch_idx) -> torch.Tensor:
         """performs the training step"""
@@ -110,37 +124,30 @@ class CustomLoss(nn.Module):
         # no negative predictions for a no-solar-panels dataset
         penalty_non_pv_negative_predictions = 0
 
-        if type(target) == tuple:
-            # self.print_debugs(target)
-            # no negative predictions at night
-            if self.weights['no_neg_pred_night'] > 0:
-                penalty_term_no_production_at_night = self._get_loss_for_night(output, target)
-            # no negative predictions for non_pv timeseries
-            if self.weights['no_neg_pred_nonpv'] > 0:
-                penalty_non_pv_negative_predictions = self._get_loss_for_non_pv(output, target)
-            # special attention to peak hours (morning and evenings)
-            if self.weights['morning_evening_peaks'] > 0:
-                penalty_term_morning_evening_peaks = self._get_loss_for_peaks(output, target)
-            if self.weights['air_co'] > 0:
-                penalty_term_air_co_on_humid_summer_days = self._get_loss_for_airco_usage(output, target)
+        self.print_debugs(target)
+        # no negative predictions at night
+        if self.weights['no_neg_pred_night'] > 0:
+            penalty_term_no_production_at_night = self._get_loss_for_night(output, target)
+        # no negative predictions for non_pv timeseries
+        if self.weights['no_neg_pred_nonpv'] > 0:
+            penalty_non_pv_negative_predictions = self._get_loss_for_non_pv(output, target)
+        # special attention to peak hours (morning and evenings)
+        if self.weights['morning_evening_peaks'] > 0:
+            penalty_term_morning_evening_peaks = self._get_loss_for_peaks(output, target)
+        if self.weights['air_co'] > 0:
+            penalty_term_air_co_on_humid_summer_days = self._get_loss_for_airco_usage(output, target)
 
         sum_ = loss + \
                self.weights['no_neg_pred_night'] * penalty_term_no_production_at_night + \
                self.weights['no_neg_pred_nonpv'] * penalty_non_pv_negative_predictions + \
                self.weights['morning_evening_peaks'] * penalty_term_morning_evening_peaks + \
                self.weights['air_co'] * penalty_term_air_co_on_humid_summer_days
-        logging.debug(
-            f"Lossterms without weights : {loss} "
-            f"+ {penalty_term_no_production_at_night} "
-            f"+ {penalty_non_pv_negative_predictions} "
-            f"+ {penalty_term_air_co_on_humid_summer_days} "
-            f"+ {penalty_term_morning_evening_peaks}"
-            f"= {loss + penalty_term_no_production_at_night + penalty_non_pv_negative_predictions + penalty_term_morning_evening_peaks + penalty_term_air_co_on_humid_summer_days}")
+
         logging.debug(
             f"Lossterms with weights: {loss} "
             f"+ {self.weights['no_neg_pred_night'] * penalty_term_no_production_at_night} "
             f"+ {self.weights['no_neg_pred_nonpv'] * penalty_non_pv_negative_predictions} "
-            f"+ {penalty_term_air_co_on_humid_summer_days} + {penalty_term_morning_evening_peaks}"
+            f"+ {self.weights['morning_evening_peaks'] * penalty_term_morning_evening_peaks}"
             f"+ {self.weights['air_co'] * penalty_term_air_co_on_humid_summer_days}"
             f"= {sum_}")
         return sum_

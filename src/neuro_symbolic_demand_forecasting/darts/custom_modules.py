@@ -249,6 +249,11 @@ class _CustomTFTModule(_TFTModule, CustomPLModule):
     #         writer.writerow(['loss', 'age'])
     #         writer.writerow(['John Doe', 30])
 
+    def validation_step(self, val_batch, batch_idx) -> torch.Tensor:
+        """performs the validation step"""
+        logging.debug("Delegating validation_step")
+        return CustomPLModule.validation_step(self, val_batch, batch_idx)
+
     def training_step(self, train_batch, batch_idx):
         # Call the training_step method from _CustomPLModule
         logging.debug("Delegating training_step")

@@ -3,14 +3,14 @@
 #SBATCH --partition=gpu
 #SBATCH --gpus=1
 #SBATCH --job-name=Semantic_1100
-#SBATCH --output="slurm-%x-%A_%a.out"
+#SBATCH --output="slurm-%x-%A.out"
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --constraint=scratch-node
 #SBATCH --mail-type=BEGIN,END
 #SBATCH --mail-user=katrin.grunert@student.uva.nl
 #SBATCH --time=04:00:00
-#SBATCH --mem=16gb
+#SBATCH --mem=4gb
 
 module load 2023
 module load Python/3.11.3-GCCcore-12.3.0

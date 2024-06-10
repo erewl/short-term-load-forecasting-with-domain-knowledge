@@ -13,6 +13,7 @@ from darts import TimeSeries
 from darts.models import RNNModel, TFTModel
 from darts.dataprocessing.transformers import Scaler
 from pytorch_lightning import Callback
+from pytorch_lightning.callbacks import EarlyStopping
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from neuro_symbolic_demand_forecasting.darts.custom_modules import ExtendedTFTModel, ExtendedRNNModel, \
@@ -216,8 +217,7 @@ def main_train(smart_meter_files: list[str], weather_forecast_files: list[str], 
                                                                                                  add_static_covariates=True,
                                                                                                  pickled_scaler_folder=_path)
     # training
-    early_stopper = EarlyStoppingAfterNthEpoch(monitor="val_loss", min_delta=0.001, patience=37, verbose=True,
-                                               start_epoch=3)
+    early_stopper = EarlyStopping(monitor="val_loss", min_delta=0.001, patience=10, verbose=True)
     cbs = [LossCurveCallback(_path), early_stopper]
     model = _init_model(model_config, _weights, cbs, {})
 
@@ -341,7 +341,7 @@ if __name__ == "__main__":
                         help='String of space separated values for the weight initialization e.g. "1 0 0 0"')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     with open(args.model_configuration, 'r') as file:
         logging.info(f'Loading config from {args.model_configuration}')
