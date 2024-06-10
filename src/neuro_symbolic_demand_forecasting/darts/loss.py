@@ -14,13 +14,12 @@ class CustomPLModule(pl.LightningModule):
     of the training batch are passed into the loss function
     """
 
-    val_losses = []
-    train_losses = []
+    val_losses = []  # a list of lists of tensors
+    train_losses = []  # a list of lists of tensors
     weight_names = ['total', 'mse', 'no_neg_pred_night', 'no_neg_pred_nonpv', 'morning_evening_peaks', 'air_co']
 
     def __init__(self):
         self.model_path = os.getenv('MODEL_PATH', '')
-
         super(CustomPLModule, self).__init__()
 
     def on_fit_end(self) -> None:
@@ -28,14 +27,15 @@ class CustomPLModule(pl.LightningModule):
         if self.model_path is not '':
             with open(f"{self.model_path}/all_val_losses.csv", 'w') as f:
                 writer = csv.writer(f)
-                val_loss = [v.item() for v in self.val_losses]
+                val_loss = [[vv.item() if type(vv) == torch.Tensor else vv for vv in v] for v in self.val_losses]
                 writer.writerow(self.weight_names)
                 writer.writerows(val_loss)
 
             with open(f"{self.model_path}/all_train_losses.csv", 'w') as f:
                 writer = csv.writer(f)
                 writer.writerow(self.weight_names)
-                train_loss = [t.item() for t in self.train_losses]
+
+                train_loss = [[tt.item() if type(tt) == torch.Tensor else tt for tt in t] for t in self.train_losses]
                 writer.writerows(train_loss)
 
     def validation_step(self, val_batch, batch_idx) -> torch.Tensor:
