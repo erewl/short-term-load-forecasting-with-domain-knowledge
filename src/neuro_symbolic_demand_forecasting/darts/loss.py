@@ -139,7 +139,7 @@ class CustomLoss(nn.Module):
         tensor_idx, tensor_pos = self.feature_mappings['future_part_of_day']
         part_of_day_tensor = target[tensor_idx][:, :, tensor_pos]
         # 0.25 -> morning, 0.75 -> evening
-        peaks_mask = ((part_of_day_tensor == 0.25) | (part_of_day_tensor == 0.75))
+        peaks_mask = ((part_of_day_tensor == 0.25) | (part_of_day_tensor == 1.0))
         output_at_peak_times = output[peaks_mask]
         target_at_peak_times = target[-1][peaks_mask]
         # take RMSE from these
