@@ -123,7 +123,7 @@ class PartOfDayEncoder:
 
     def _encode_part_of_day(self, timestamp):
         sun_info = sun(self.city.observer, date=timestamp.date())
-        sunrise = sun_info['sunrise'].astimezone(self.timezone)
+        sunrise = sun_info['sunrise'].astimezone(self.timezone).time()
         sunset = sun_info['sunset'].astimezone(self.timezone).time()
 
         # morning_start = (sunrise - dt.timedelta(hours=0)).time()
