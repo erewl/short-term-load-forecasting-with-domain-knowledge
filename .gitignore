@@ -8,6 +8,9 @@ unclean_data/**
 models/**
 darts_logs/**
 00_results/**
+01_results/**
+02_results/**
+03_results/**
 debug_*/**
 lightning_logs/**
 *.pkl
