@@ -73,10 +73,15 @@ def clean_data(_df: pl.DataFrame) -> pl.DataFrame:
     min_ptus = get_date_range_in_ptus(min_date, max_date)
     print('Filtering out', max_date, min_date, min_ptus)
 
+    con =  len(_df['ean_sha256'].unique())
     df = filter_out_missing_values(_df.lazy(), min_ptus)
+    newcon = len(df.collect()['ean_sha256'].unique())
+    print("Connections with missing values !", con, newcon, con-newcon)
     df = generate_interval_diffs(df)
     df = accumulate(df)
     print("Collecting results!")
     df = df.collect()
-    df = interpolate_outliers(df, detect_outliers(df))
+    outliers = detect_outliers(df)
+    print(len(df), len(outliers))
+    df = interpolate_outliers(df, outliers)
     return df

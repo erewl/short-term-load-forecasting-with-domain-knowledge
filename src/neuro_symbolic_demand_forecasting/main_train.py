@@ -24,7 +24,6 @@ from sklearn.preprocessing import MinMaxScaler
 
 from neuro_symbolic_demand_forecasting.encoders.encoders import AMS_TZ, create_encoders, LSTM_MAPPING, TFT_MAPPING
 
-
 def load_csvs(_config: dict, _smart_meter_files: list[str], _weather_forecast_files: list[str],
               _weather_actuals_files: list[str]) -> Tuple[list[pd.DataFrame], pd.DataFrame, pd.DataFrame]:
     sms = [pd.read_csv(s, index_col=None, parse_dates=['readingdate']) \
@@ -371,3 +370,21 @@ if __name__ == "__main__":
     weight_names = ['no_neg_pred_night', 'no_neg_pred_nonpv', 'morning_evening_peaks', 'air_co']
 
     main_train(smd_files, wfd_files, wad_files, model_config, path, dict(zip(weight_names, weights)))
+
+# ./evaluation_pv.sh ./03_results/20240611_1704_tft_semantic_0000 ✅ rework: ✅
+# ./evaluation_pv.sh ./03_results/20240611_1709_tft_semantic_0010 ✅ rework: ✅
+# ./evaluation_pv.sh ./03_results/20240611_1709_tft_semantic_0100 ✅ rework: ✅
+# ./evaluation_pv.sh ./03_results/20240611_1716_tft_semantic_0110 ✅ rework: ✅
+# ./evaluation_pv.sh ./03_results/20240611_1716_tft_semantic_1010 ✅ rework: ✅
+# ./evaluation_pv.sh ./03_results/20240611_1717_tft_semantic_1000 ✅ rework: ✅
+# ./evaluation_pv.sh ./03_results/20240611_1720_tft_semantic_1100 ✅ rework: ✅
+# ./evaluation_pv.sh ./03_results/20240611_1720_tft_semantic_1110 ✅ rework: ✅
+
+# ./evaluation_nonpv.sh ./03_results/20240611_1704_tft_semantic_0000 ✅ rework: ✅
+# ./evaluation_nonpv.sh ./03_results/20240611_1709_tft_semantic_0010 ✅ rework: ✅
+# ./evaluation_nonpv.sh ./03_results/20240611_1709_tft_semantic_0100 ✅ rework: ✅
+# ./evaluation_nonpv.sh ./03_results/20240611_1716_tft_semantic_0110 ✅ rework: ✅
+# ./evaluation_nonpv.sh ./03_results/20240611_1716_tft_semantic_1010 ✅ rework: ✅
+# ./evaluation_nonpv.sh ./03_results/20240611_1717_tft_semantic_1000 ✅ rework: ✅
+# ./evaluation_nonpv.sh ./03_results/20240611_1720_tft_semantic_1100 ✅ rework: ✅
+# ./evaluation_nonpv.sh ./03_results/20240611_1720_tft_semantic_1110 ✅ rework: ✅

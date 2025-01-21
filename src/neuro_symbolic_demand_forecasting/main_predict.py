@@ -12,7 +12,7 @@ import torch
 import yaml
 from darts import TimeSeries
 from darts.models.forecasting.torch_forecasting_model import TorchForecastingModel
-from darts.metrics.metrics import mae, mape, rmse, smape, r2_score
+from darts.metrics.metrics import mae, mape, rmse, smape, r2_score, merr
 
 from neuro_symbolic_demand_forecasting.main_train import load_csvs, create_timeseries_from_dataframes
 
@@ -133,9 +133,19 @@ def _compute_imbalance_volumes(_target, _predicted):
            np.sum(np.abs(_target.values())) * 100
 
 
+def smape_100(_target, _predicted):
+    _t = _target.values()
+    _p = _predicted.values()
+    return 100 * np.mean(np.abs(_t - _p) /
+                        (np.abs(_t) + np.abs(_p))
+                        )
+
+
 def get_metrics(_target, _predicted):
     smape_ = smape(_target, _predicted)
-    mape_ = mape(_target, _predicted)
+    smape_100_ = smape_100(_target, _predicted)
+    # mape_ = mape(_target, _predicted)
+    merr_ = merr(_target, _predicted)
     mae_ = mae(_target, _predicted)
     # wape_ = (_target - _predicted).abs().sum() / _target.sum()
     rmse_ = rmse(_target, _predicted)
@@ -144,16 +154,15 @@ def get_metrics(_target, _predicted):
 
     metrics = {
         'sMAPE': round(smape_, 3),
-        'MAPE': round(mape_, 3),
-        # 'WAPE': round(wape_, 3),
+        'sMAPE_100': round(smape_100_, 3),
+        'WAPE': round(imbalance, 3),
+        'ME': round(merr_, 3),
         'MAE': round(mae_, 3),
         'RMSE': round(rmse_, 3),
-        'R2': round(r2_, 3),
-        'Imbalance': round(imbalance, 3)
+        'R2': round(r2_, 3)
     }
 
     logging.info('\n'.join([f"{k}: {v} " for k, v in metrics.items()]))
-    print()
     return metrics
 
 

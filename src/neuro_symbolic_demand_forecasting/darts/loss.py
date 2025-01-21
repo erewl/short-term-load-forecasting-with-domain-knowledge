@@ -142,7 +142,6 @@ class CustomLoss(nn.Module):
         peaks_mask = ((part_of_day_tensor == 0.25) | (part_of_day_tensor == 1.0))
         output_at_peak_times = output[peaks_mask]
         target_at_peak_times = target[-1][peaks_mask]
-        # take RMSE from these
         return torch.mean((output_at_peak_times - target_at_peak_times) ** 2)
 
     def forward(self, output, target):
